@@ -78,7 +78,7 @@ char line_buffer[100];
 uint8_t line_index = 0;
 
 // --- BÚFER LORA TLV ---
-uint8_t lora_tx_buffer[64];
+uint8_t lora_tx_buffer[128];
 uint8_t lora_tx_len = 0;
 
 // FIX: radio_tx_done vive en subghz_phy_app.c, aquí solo la declaramos extern
@@ -195,23 +195,40 @@ void SHT21_Read(float *temperature, float *humidity) {
 	raw_val = (data[0] << 8) | (data[1] & 0xFC); // Unimos los bytes y ponemos a '0' los últimos 2 bits de estado
 	*humidity = -6.0 + 125.0 * ((float) raw_val / 65536.0);	// Aplicamos la fórmula del datasheet
 }
-
-void tlv_pack_3bytes(uint8_t type, uint8_t b1, uint8_t b2, uint8_t b3) {
-	lora_tx_buffer[lora_tx_len++] = type;
-	lora_tx_buffer[lora_tx_len++] = 3;
-	lora_tx_buffer[lora_tx_len++] = b1;
-	lora_tx_buffer[lora_tx_len++] = b2;
-	lora_tx_buffer[lora_tx_len++] = b3;
+// Empaquetar 1 Byte (8 bits)
+void tlv_pack_8(uint8_t type, uint8_t val) {
+    lora_tx_buffer[lora_tx_len++] = type;
+    lora_tx_buffer[lora_tx_len++] = 1; // Longitud: 1 byte
+    lora_tx_buffer[lora_tx_len++] = val;
 }
 
-void tlv_pack_int16(uint8_t type, int16_t val) {
-	lora_tx_buffer[lora_tx_len++] = type;
-	lora_tx_buffer[lora_tx_len++] = 2;
-	lora_tx_buffer[lora_tx_len++] = (val >> 8) & 0xFF;
-	lora_tx_buffer[lora_tx_len++] = val & 0xFF;
+// Empaquetar 2 Bytes
+void tlv_pack_16(uint8_t type, uint16_t val) {
+    lora_tx_buffer[lora_tx_len++] = type;
+    lora_tx_buffer[lora_tx_len++] = 2; // Longitud: 2 bytes
+    lora_tx_buffer[lora_tx_len++] = (val >> 8) & 0xFF; // MSB
+    lora_tx_buffer[lora_tx_len++] = val & 0xFF;        // LSB
 }
 
-void tlv_pack_accel(uint8_t type, int16_t x, int16_t y, int16_t z) {
+// Empaquetar 4 Bytes
+void tlv_pack_32(uint8_t type, uint32_t val) {
+    lora_tx_buffer[lora_tx_len++] = type;
+    lora_tx_buffer[lora_tx_len++] = 4; // Longitud: 4 bytes
+    lora_tx_buffer[lora_tx_len++] = (val >> 24) & 0xFF;
+    lora_tx_buffer[lora_tx_len++] = (val >> 16) & 0xFF;
+    lora_tx_buffer[lora_tx_len++] = (val >> 8) & 0xFF;
+    lora_tx_buffer[lora_tx_len++] = val & 0xFF;
+}
+
+void tlv_pack_time(uint8_t type, uint8_t h, uint8_t m, uint8_t s) {
+	lora_tx_buffer[lora_tx_len++] = type;
+	lora_tx_buffer[lora_tx_len++] = 3; // Longitud: 3 bytes
+	lora_tx_buffer[lora_tx_len++] = h;
+	lora_tx_buffer[lora_tx_len++] = m;
+	lora_tx_buffer[lora_tx_len++] = s;
+}
+
+void tlv_pack_xyz(uint8_t type, int16_t x, int16_t y, int16_t z) {
 	lora_tx_buffer[lora_tx_len++] = type;
 	lora_tx_buffer[lora_tx_len++] = 6;
 	lora_tx_buffer[lora_tx_len++] = (x >> 8) & 0xFF;
@@ -434,14 +451,17 @@ int main(void) {
 					int art_h = (utc_h - 3 < 0) ? utc_h - 3 + 24 : utc_h - 3;
 					uint8_t m = (time_str[2] - '0') * 10 + (time_str[3] - '0');
 					uint8_t s = (time_str[4] - '0') * 10 + (time_str[5] - '0');
-					tlv_pack_3bytes(0x01, (uint8_t) art_h, m, s);
+					tlv_pack_time(0x01, (uint8_t) art_h, m, s); //TLV HORA
 
 					int32_t lat_int = nmea_to_int32(lat_str, ns[0]);
 					int32_t lon_int = nmea_to_int32(lon_str, ew[0]);
-					tlv_pack_gps_coords(0x02, lat_int, lon_int);
+					tlv_pack_gps_coords(0x02, lat_int, lon_int); //TLV LATITUD Y LONGITUD
 
 					int16_t alt_int = (int16_t) atof(alt_str);
-					tlv_pack_int16(0x03, alt_int);
+					tlv_pack_16(0x03, alt_int); //TLV ALTITUD
+
+					tlv_pack_16(0x04, (uint16_t)(gps_speed_kmh * 100.0f));
+					tlv_pack_16(0x04,gps_speed_kmh); //TLV VELOCIDAD
 				}
 			}
 
@@ -460,10 +480,8 @@ int main(void) {
 
 			float temp = BMI270_ReadTemperature();
 
-			// Paquete TLV (usando valores crudos)
-			tlv_pack_accel(0x04, acc_x, acc_y, acc_z);
-			int16_t temp_scaled = (int16_t) (temp * 100.0f);
-			tlv_pack_int16(0x05, temp_scaled);
+			tlv_pack_xyz(0x05, acc_x, acc_y, acc_z);//TLV acelerometro X,Y,Z
+			tlv_pack_xyz(0x06, gyr_x, gyr_y, gyr_z);//TLV giroscopio X,Y,Z
 
 			// Conversión a valores reales para el Print ASCII
 			// (Basado en rango de +-8g configurado en REG_ACC_RANGE = 0x02 y giroscopio por defecto de +-2000dps)
@@ -477,14 +495,20 @@ int main(void) {
 
 			//SHT21 (SIEMPRE)
 			SHT21_Read(&temperature_sht21, &hum);
+			int16_t temp_sht_bits = (int16_t)(temperature_sht21 * 100.0f);
+			tlv_pack_16(0x07, temp_sht_bits);
+			uint16_t hum_bits = (uint16_t)(hum * 100.0f);
+			tlv_pack_16(0x08, hum_bits);
 
 			//BMP280 SIEMPRE
 
 			if (bmp280_read_temperature_pressure(&gs_handle,
 					&raw_temperature_bmp, &temperature_bmp280, &raw_pressure,
 					&pressure) == 0) {
-				sprintf(uart_buf, "Temperatura: %.2f C, Presion: %.2f Pa\r\n",
-						temperature_bmp280, pressure);
+				uint32_t press_bits = (uint32_t)pressure;
+				tlv_pack_32(0x09, press_bits);
+				//sprintf(uart_buf, "Temperatura: %.2f C, Presion: %.2f Pa\r\n",
+					//	temperature_bmp280, pressure);
 			} else {
 				UART_Print("Error al leer datos BMP280\r\n");
 			}
