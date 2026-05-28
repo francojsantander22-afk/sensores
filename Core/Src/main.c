@@ -320,6 +320,7 @@ int main(void) {
 	float temperature_bmp280, pressure;
 	float temperature_sht21, hum;
 	char uart_buf[100];
+	float gps_speed_kmh = 0.0f;
 	// Iniciar interrupciones de recepción para ambos UARTs
 	HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 	HAL_UART_Receive_IT(&huart2, &rx_data_uart2, 1);
@@ -373,7 +374,17 @@ int main(void) {
 			if (c == '\n' || line_index >= sizeof(line_buffer) - 1) {
 				line_buffer[line_index] = '\0';
 
-				if (strstr(line_buffer, "GGA") != NULL) {
+				// 1. Interceptar VTG para guardar la velocidad
+				if (strstr(line_buffer, "VTG") != NULL) {
+					char speed_str[10] = { 0 };
+					// El campo 7 contiene la velocidad en km/h
+					get_nmea_field(line_buffer, 7, speed_str);
+					if (strlen(speed_str) > 0) {
+						gps_speed_kmh = atof(speed_str);
+					}
+				}
+				// 2. Usar GGA como gatillo de telemetría
+				else if (strstr(line_buffer, "GGA") != NULL) {
 					last_gps_time = HAL_GetTick();
 					trigger_telemetry = 1;
 					gps_valid = 1;
@@ -502,7 +513,7 @@ int main(void) {
 					// 1. Verificamos si pasaron más de 2 segundos sin datos (Desconectado)
 					if (HAL_GetTick() - last_gps_time > 2000) {
 						snprintf(ascii_msg, sizeof(ascii_msg),
-								"[GPS] Tx desconectado\r\n"
+								"\r\n[GPS] Tx desconectado\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
@@ -513,14 +524,14 @@ int main(void) {
 					// 2. Verificamos si hay conexión y tenemos fix satelital
 					else if (gps_valid && fix_str[0] >= '1') {
 						snprintf(ascii_msg, sizeof(ascii_msg),
-								"[GPS] Lat: %s %s, Lon: %s %s, Alt: %s m\r\n"
+								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
-								lat_str, ns, lon_str, ew, alt_str, ax_g, ay_g,
-								az_g, gx_dps, gy_dps, gz_dps, temp,
-								temperature_sht21, hum, temperature_bmp280,
-								pressure);
+								lat_str, ns, lon_str, ew, alt_str,
+								gps_speed_kmh, ax_g, ay_g, az_g, gx_dps, gy_dps,
+								gz_dps, temp, temperature_sht21, hum,
+								temperature_bmp280, pressure);
 					}
 					// 3. Hay conexión pero aún no hay fix
 					else {
