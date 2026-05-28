@@ -1,0 +1,5 @@
+1779888735999	Rename resource 'gps'
+1779971114013	Delete resource 'sologps/Core/Src/nmea_parse.c'
+1779971117405	Delete resource 'sologps/Core/Inc/nmea_parse.h'
+1779974940721	Delete resource 'sologps/Core/Src/gps_parser.c'
+1779974946342	Delete resource 'sologps/Core/Inc/gps_parser.h'

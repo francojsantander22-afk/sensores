@@ -1,0 +1,10 @@
+09:40:07 **** Build of configuration Debug for project Prueba_rx_rak ****
+make -j8 all 
+arm-none-eabi-size  Prueba_rx_rak.elf 
+   text	   data	    bss	    dec	    hex	filename
+  73160	    504	   4328	  77992	  130a8	Prueba_rx_rak.elf
+Finished building: default.size.stdout
+ 
+
+09:40:09 Build Finished. 0 errors, 0 warnings. (took 2s.394ms)
+

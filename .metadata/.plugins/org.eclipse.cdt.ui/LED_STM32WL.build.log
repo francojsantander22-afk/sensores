@@ -1,0 +1,10 @@
+09:40:05 **** Build of configuration Debug for project LED_STM32WL ****
+make -j8 all 
+arm-none-eabi-size  LED_STM32WL.elf 
+   text	   data	    bss	    dec	    hex	filename
+  15828	     12	   1868	  17708	   452c	LED_STM32WL.elf
+Finished building: default.size.stdout
+ 
+
+09:40:06 Build Finished. 0 errors, 0 warnings. (took 1s.285ms)
+

@@ -1,0 +1,14 @@
+10:21:34 **** Incremental Build of configuration Debug for project sologps ****
+make -j8 all 
+arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DCORE_CM4 -DUSE_HAL_DRIVER -DSTM32WL55xx -c -I../Core/Inc -I../Drivers/STM32WLxx_HAL_Driver/Inc -I../Drivers/STM32WLxx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32WLxx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/main.o"
+arm-none-eabi-gcc -o "sologps.elf" @"objects.list"   -mcpu=cortex-m4 -T"C:\Users\franc\STM32CubeIDE\workspace_2.1.2\sologps\STM32WL55JCIX_FLASH.ld" --specs=nosys.specs -Wl,-Map="sologps.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+Finished building target: sologps.elf
+ 
+arm-none-eabi-size  sologps.elf 
+arm-none-eabi-objdump -h -S sologps.elf  > "sologps.list"
+   text	   data	    bss	    dec	    hex	filename
+  42676	    468	   2444	  45588	   b214	sologps.elf
+Finished building: default.size.stdout
+ 
+Finished building: sologps.list
+ 

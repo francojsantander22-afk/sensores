@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item key="hasShownOverlayPopupBefore" value="true"/>
+	<item key="replaceBarOpen" value="false"/>
+	<list key="searchhistory">
+		<item value="UART_Receive_IT"/>
+		<item value="rx_buffer"/>
+		<item value="115200"/>
+		<item value="sprintf(debug_msg"/>
+		<item value="begin pv"/>
+		<item value="begin"/>
+		<item value="init"/>
+		<item value="#define BMP280_I2C_ADDR_GND"/>
+		<item value="temperatue"/>
+		<item value="bmp280_set_temperatue"/>
+		<item value="oversa"/>
+		<item value="i2c3"/>
+		<item value="Conf_Frequency"/>
+		<item value="case TX"/>
+		<item value="rx_data"/>
+	</list>
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
+		<item key="wrap" value="true"/>
+		<item key="casesensitive" value="false"/>
+		<item key="wholeword" value="false"/>
+		<item key="incremental" value="false"/>
+		<item key="isRegEx" value="false"/>
+		<list key="findhistory">
+			<item value="../Core/Src/main.c:85:13: error: static declaration of &apos;MX_RTC_Init&apos; follows non-static declaration"/>
+			<item value="../Core/Src/main.c:109:8: error: unknown type name &apos;RadioEvents_t&apos;"/>
+			<item value="../Core/Src/main.c:117:5: error: implicit declaration of function &apos;UART_Print&apos; [-Wimplicit-function-declaration]"/>
+		</list>
+		<list key="replacehistory">
+		</list>
+	</section>
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
+		<item key="DIALOG_X_ORIGIN" value="615"/>
+		<item key="DIALOG_Y_ORIGIN" value="156"/>
+		<item key="DIALOG_WIDTH" value="414"/>
+		<item key="DIALOG_HEIGHT" value="454"/>
+		<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-15|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>
+	</section>
+</section>

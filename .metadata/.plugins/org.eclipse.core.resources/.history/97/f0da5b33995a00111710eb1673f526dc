@@ -1,0 +1,22 @@
+#ifndef INC_GPS_PARSER_H_
+#define INC_GPS_PARSER_H_
+
+#include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
+
+// Estructura para almacenar los datos limpios
+typedef struct {
+    char hora[11];
+    float latitud;
+    float longitud;
+    float altitud;
+    float velocidad_kmh;
+    uint8_t fix_valido; // 1 = Válido, 0 = Inválido
+} TelemetriaGPS_t;
+
+// Prototipos de funciones
+void GPS_Init(TelemetriaGPS_t *gps_data);
+void GPS_ParseSentence(TelemetriaGPS_t *gps_data, const char *sentencia_nmea);
+
+#endif /* INC_GPS_PARSER_H_ */

@@ -1,0 +1,10 @@
+09:45:23 **** Incremental Build of configuration Debug for project SubGHz_Phy_PingPong ****
+make -j8 all 
+arm-none-eabi-size  SubGHz_Phy_PingPong.elf 
+   text	   data	    bss	    dec	    hex	filename
+  33440	     24	   4744	  38208	   9540	SubGHz_Phy_PingPong.elf
+Finished building: default.size.stdout
+ 
+
+09:45:27 Build Finished. 0 errors, 0 warnings. (took 3s.528ms)
+

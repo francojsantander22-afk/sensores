@@ -1,0 +1,7 @@
+LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/arch=x86_64
+LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/name=Local
+LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/os=win32
+configDescList=org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:BMI270,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:LED_STM32WL Debug,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:Prueba_tx_rak,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:Ch2i_RAK3172_Phy_PingPong,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:Prueba_rx_rak
+eclipse.preferences.version=1
+org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:BMI270/activeLaunchMode=debug
+org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:BMI270/activeLaunchTarget=null\:---

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename resource &apos;sensores_integrados/gps.ioc&apos; to &apos;sensores_integrados.ioc&apos;" description="Rename resource &apos;gps.ioc&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="gps.ioc" name="sensores_integrados.ioc" stamp="1779888757567" updateReferences="true"/>
+</session>

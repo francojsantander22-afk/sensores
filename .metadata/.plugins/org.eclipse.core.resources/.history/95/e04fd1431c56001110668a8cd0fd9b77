@@ -1,0 +1,349 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2023 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "app_subghz_phy.h"
+#include "gpio.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include <string.h>
+#include <stdio.h>
+#include "usart.h"
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* Tags TLV — deben coincidir exactamente con el transmisor */
+#define TLV_TAG_TIME       0x01
+#define TLV_TAG_GPS_COORD  0x02
+#define TLV_TAG_ALTITUDE   0x03
+#define TLV_TAG_ACCEL      0x04
+#define TLV_TAG_TEMP       0x05
+#define TLV_TAG_GYRO       0x06
+
+/* Resultado del parseo TLV */
+typedef struct {
+    uint8_t  has_gps;
+    uint8_t  hour, minute, second;
+    int32_t  lat;        /* grados × 100000 */
+    int32_t  lon;
+    int16_t  altitude;
+    uint8_t  has_imu;
+    int16_t  acc_x, acc_y, acc_z;
+    int16_t  gyr_x, gyr_y, gyr_z;
+    float    temperature;
+} TelemetryFrame_t;
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+/* Interfaz con subghz_phy_app.c */
+extern uint8_t          BufferRx[];
+extern uint16_t         RxBufferSize;
+extern volatile uint8_t tlv_rx_ready;
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+/* USER CODE BEGIN PFP */
+
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/*
+ * Recorre el buffer TLV y llena un TelemetryFrame_t.
+ * Retorna 1 si decodificó al menos un TAG válido, 0 si el buffer está vacío o corrupto.
+ */
+static uint8_t tlv_decode(const uint8_t *buf, uint16_t len, TelemetryFrame_t *out)
+{
+    memset(out, 0, sizeof(TelemetryFrame_t));
+    uint16_t i = 0;
+
+    while (i + 2 <= len)   /* mínimo: 1 byte TAG + 1 byte LENGTH */
+    {
+        uint8_t tag    = buf[i];
+        uint8_t length = buf[i + 1];
+        i += 2;
+
+        if (i + length > len) break;   /* guard: no leer fuera del buffer */
+
+        switch (tag)
+        {
+            case TLV_TAG_TIME:
+                if (length == 3) {
+                    out->hour   = buf[i];
+                    out->minute = buf[i+1];
+                    out->second = buf[i+2];
+                    out->has_gps = 1;
+                }
+                break;
+
+            case TLV_TAG_GPS_COORD:
+                if (length == 8) {
+                    out->lat = (int32_t)((buf[i]   << 24) | (buf[i+1] << 16) |
+                                         (buf[i+2] <<  8) |  buf[i+3]);
+                    out->lon = (int32_t)((buf[i+4] << 24) | (buf[i+5] << 16) |
+                                         (buf[i+6] <<  8) |  buf[i+7]);
+                }
+                break;
+
+            case TLV_TAG_ALTITUDE:
+                if (length == 2) {
+                    out->altitude = (int16_t)((buf[i] << 8) | buf[i+1]);
+                }
+                break;
+
+            case TLV_TAG_ACCEL:
+                if (length == 6) {
+                    out->acc_x = (int16_t)((buf[i]   << 8) | buf[i+1]);
+                    out->acc_y = (int16_t)((buf[i+2] << 8) | buf[i+3]);
+                    out->acc_z = (int16_t)((buf[i+4] << 8) | buf[i+5]);
+                    out->has_imu = 1;
+                }
+                break;
+
+            case TLV_TAG_GYRO:
+                if (length == 6) {
+                    out->gyr_x = (int16_t)((buf[i]   << 8) | buf[i+1]);
+                    out->gyr_y = (int16_t)((buf[i+2] << 8) | buf[i+3]);
+                    out->gyr_z = (int16_t)((buf[i+4] << 8) | buf[i+5]);
+                }
+                break;
+
+            case TLV_TAG_TEMP:
+                if (length == 2) {
+                    int16_t raw = (int16_t)((buf[i] << 8) | buf[i+1]);
+                    out->temperature = raw / 100.0f;
+                }
+                break;
+
+            default:
+                /* TAG desconocido — saltar su payload y continuar */
+                break;
+        }
+        i += length;
+    }
+
+    return (out->has_gps || out->has_imu) ? 1 : 0;
+}
+
+/*
+ * Imprime por UART2 la trama decodificada en formato ASCII legible.
+ */
+static void telemetry_print(const TelemetryFrame_t *f, int8_t rssi)
+{
+    char buf[256];
+    int  pos = 0;
+
+    pos += snprintf(buf + pos, sizeof(buf) - pos,
+                    "\r\n===== TELEMETRIA HAPS =====\r\n");
+    pos += snprintf(buf + pos, sizeof(buf) - pos,
+                    "RSSI: %d dBm\r\n", rssi);
+
+    if (f->has_gps) {
+        /* Convertir lat/lon de int32 (×100000) a grados decimales */
+        float lat_f = f->lat / 100000.0f;
+        float lon_f = f->lon / 100000.0f;
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        "GPS  | Hora(ART): %02d:%02d:%02d\r\n",
+                        f->hour, f->minute, f->second);
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        "GPS  | Lat: %.5f  Lon: %.5f\r\n", lat_f, lon_f);
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        "GPS  | Altitud: %d m\r\n", f->altitude);
+    } else {
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        "GPS  | Sin fix\r\n");
+    }
+
+    if (f->has_imu) {
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        "ACCEL| X:%6d  Y:%6d  Z:%6d (LSB)\r\n",
+                        f->acc_x, f->acc_y, f->acc_z);
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        "GYRO | X:%6d  Y:%6d  Z:%6d (LSB)\r\n",
+                        f->gyr_x, f->gyr_y, f->gyr_z);
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        "TEMP | %.2f C\r\n", f->temperature);
+    }
+
+    pos += snprintf(buf + pos, sizeof(buf) - pos,
+                    "===========================\r\n");
+
+    HAL_UART_Transmit(&huart2, (uint8_t*)buf, pos, HAL_MAX_DELAY);
+}
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_SubGHz_Phy_Init();
+  /* USER CODE BEGIN 2 */
+  extern int8_t RssiValue;
+  //HAL_GPIO_WritePin(GPIOA, LED_GREEN, GPIO_PIN_SET);
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+      if (tlv_rx_ready)
+      {
+          tlv_rx_ready = 0;   /* consumir el flag primero */
+          UART_Print("ENTRO AL MAIN \r\n");
+          TelemetryFrame_t frame = {0};
+          uint8_t ok = tlv_decode(BufferRx, RxBufferSize, &frame);
+
+          if (ok) {
+              telemetry_print(&frame, RssiValue);
+          } else {
+              HAL_UART_Transmit(&huart2,
+                  (uint8_t*)"[WARN] Paquete TLV invalido\r\n", 29,
+                  HAL_MAX_DELAY);
+          }
+      }
+      /* USER CODE END WHILE */
+      MX_SubGHz_Phy_Process();
+  }
+      /* USER CODE BEGIN 3 */
+  }
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Configure LSE Drive Capability
+  */
+  HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
+
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE|RCC_OSCILLATORTYPE_MSI;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
+  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
+  RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_11;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure the SYSCLKSource, HCLK, PCLK1 and PCLK2 clocks dividers
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK3|RCC_CLOCKTYPE_HCLK
+                              |RCC_CLOCKTYPE_SYSCLK|RCC_CLOCKTYPE_PCLK1
+                              |RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLK3Divider = RCC_SYSCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/* USER CODE BEGIN 4 */
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */

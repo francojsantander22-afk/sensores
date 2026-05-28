@@ -1,0 +1,10 @@
+10:29:58 **** Build of configuration Debug for project gps ****
+make -j8 all 
+arm-none-eabi-size  gps.elf 
+   text	   data	    bss	    dec	    hex	filename
+  69428	    472	   3056	  72956	  11cfc	gps.elf
+Finished building: default.size.stdout
+ 
+
+10:30:00 Build Finished. 0 errors, 0 warnings. (took 2s.474ms)
+

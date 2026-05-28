@@ -1,0 +1,98 @@
+#include "gps_parser.h"
+
+// Función auxiliar para extraer un campo específico entre comas
+static void ExtraerCampo(const char *sentencia, uint8_t num_campo, char *salida) {
+    uint8_t campo_actual = 0;
+    const char *p = sentencia;
+    int idx_salida = 0;
+
+    salida[0] = '\0'; // Inicializar vacío por defecto
+
+    while (*p != '\0' && *p != '*') {
+        if (*p == ',') {
+            campo_actual++;
+        } else if (campo_actual == num_campo) {
+            salida[idx_salida++] = *p;
+        } else if (campo_actual > num_campo) {
+            break; // Ya pasamos el campo deseado, dejamos de buscar
+        }
+        p++;
+    }
+    salida[idx_salida] = '\0';
+}
+
+// Convertir formato NMEA (DDMM.MMMMM) a Grados Decimales
+static float ConvertirCoordenadas(const char *coord, const char *dir) {
+    if (strlen(coord) < 4) return 0.0f;
+
+    char str_grados[4] = {0};
+    // El punto siempre está en la misma posición relativa a los minutos
+    char *punto = strchr(coord, '.');
+    if (!punto) return 0.0f;
+
+    int pos_punto = punto - coord;
+
+    // Extraer los grados (todo antes de los últimos 2 enteros previos al punto)
+    strncpy(str_grados, coord, pos_punto - 2);
+
+    float grados = atof(str_grados);
+    float minutos = atof(coord + (pos_punto - 2)); // Sumar offset para apuntar a los minutos
+
+    float decimal = grados + (minutos / 60.0f);
+
+    if (dir[0] == 'S' || dir[0] == 'W') {
+        decimal *= -1.0f;
+    }
+
+    return decimal;
+}
+
+void GPS_Init(TelemetriaGPS_t *gps_data) {
+    memset(gps_data->hora, 0, sizeof(gps_data->hora));
+    gps_data->latitud = 0.0f;
+    gps_data->longitud = 0.0f;
+    gps_data->altitud = 0.0f;
+    gps_data->velocidad_kmh = 0.0f;
+    gps_data->fix_valido = 0;
+}
+
+void GPS_ParseSentence(TelemetriaGPS_t *gps_data, const char *sentencia_nmea) {
+    char header[7];
+    ExtraerCampo(sentencia_nmea, 0, header);
+
+    if (strcmp(header, "$GNGGA") == 0 || strcmp(header, "$GPGGA") == 0) {
+        char calidad[2];
+        ExtraerCampo(sentencia_nmea, 6, calidad);
+
+        if (calidad[0] != '0' && calidad[0] != '\0') {
+            gps_data->fix_valido = 1;
+
+            char buffer[15];
+
+            ExtraerCampo(sentencia_nmea, 1, gps_data->hora);
+
+            char dir_lat[2], dir_lon[2];
+            char raw_lat[15], raw_lon[15];
+
+            ExtraerCampo(sentencia_nmea, 2, raw_lat);
+            ExtraerCampo(sentencia_nmea, 3, dir_lat);
+            gps_data->latitud = ConvertirCoordenadas(raw_lat, dir_lat);
+
+            ExtraerCampo(sentencia_nmea, 4, raw_lon);
+            ExtraerCampo(sentencia_nmea, 5, dir_lon);
+            gps_data->longitud = ConvertirCoordenadas(raw_lon, dir_lon);
+
+            ExtraerCampo(sentencia_nmea, 9, buffer);
+            if(strlen(buffer) > 0) gps_data->altitud = atof(buffer);
+        } else {
+            gps_data->fix_valido = 0;
+        }
+    }
+    else if (strcmp(header, "$GNVTG") == 0 || strcmp(header, "$GPVTG") == 0) {
+        char buffer[10];
+        ExtraerCampo(sentencia_nmea, 7, buffer);
+        if(strlen(buffer) > 0) {
+            gps_data->velocidad_kmh = atof(buffer);
+        }
+    }
+}

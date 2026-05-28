@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="ExternalProjectImportWizard">
+		<item key="WizardProjectsImportPage.STORE_NESTED_PROJECTS" value="true"/>
+		<item key="WizardProjectsImportPage.STORE_COPY_PROJECT_ID" value="false"/>
+		<item key="WizardProjectsImportPage.STORE_ARCHIVE_SELECTED" value="false"/>
+		<item key="WizardProjectsImportPage.STORE_CLOSE_CREATED_PROJECTS_ID" value="false"/>
+		<item key="WizardProjectsImportPage.STORE_HIDE_CONFLICTING_PROJECTS_ID" value="false"/>
+		<list key="WizardProjectsImportPage.STORE_DIRECTORIES">
+			<item value="C:\Users\franc\STM32CubeIDE\workspace_2.1.1\BMI270"/>
+		</list>
+		<list key="WizardProjectsImportPage.STORE_ARCHIVES">
+			<item value=""/>
+		</list>
+		<section name="ExternalProjectImportWizard.dialogBounds">
+			<item key="DIALOG_X_ORIGIN" value="509"/>
+			<item key="DIALOG_Y_ORIGIN" value="48"/>
+			<item key="DIALOG_WIDTH" value="700"/>
+			<item key="DIALOG_HEIGHT" value="861"/>
+			<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-15|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>
+		</section>
+	</section>
+	<section name="SmartImportWizard">
+		<item key="SmartImportRootWizardPage.STORE_HIDE_ALREADY_OPEN" value="false"/>
+		<item key="SmartImportRootWizardPage.STORE_CLOSE_IMPORTED" value="false"/>
+		<item key="SmartImportRootWizardPage.STORE_NESTED_PROJECTS" value="true"/>
+		<item key="SmartImportRootWizardPage.STORE_CONFIGURE_NATURES" value="true"/>
+		<list key="org.eclipse.ui.internal.wizards.datatransfer.SmartImportRootWizardPage.knownSources">
+			<item value="C:\Users\franc\Desktop\Pruebas RAK rx"/>
+			<item value="C:\Users\franc\Downloads\Telemetria+LoRa\Pruebas RAK"/>
+			<item value="C:\Users\franc\Downloads\Pruebas RAK rx"/>
+			<item value="C:\Users\franc\STM32CubeIDE\workspace_2.1.2\gps"/>
+			<item value="C:\Users\franc\Downloads\gps"/>
+			<item value="C:\Users\franc\Downloads\GPSIMU"/>
+			<item value="C:\Users\franc\Downloads\Pruebas RAK"/>
+			<item value="C:\Users\franc\Desktop\Con ACK\Pruebas RAK"/>
+			<item value="C:\Users\franc\Desktop\Con ACK\Pruebas RAK\SubGHz_Phy"/>
+			<item value="C:\Users\franc\Desktop\Pruebas RAK"/>
+			<item value="C:\Users\franc\Desktop\osnatos-Ch2i_RAK3172_Phy_PingPong-8452016"/>
+			<item value="C:\Users\franc\Desktop\osnatos-Ch2i_RAK3172_Phy_PingPong-8452016\SubGHz_Phy"/>
+			<item value="C:\Users\franc\STM32Cube\Repository\STM32Cube_FW_WL_V1.5.0\Projects\NUCLEO-WL55JC\Applications\SubGHz_Phy\SubGHz_Phy_PingPong\STM32CubeIDE"/>
+			<item value="C:\Users\franc\STM32Cube\Repository\STM32Cube_FW_WL_V1.5.0\Projects\NUCLEO-WL55JC\Applications\SubGHz_Phy\SubGHz_Phy_PingPong"/>
+		</list>
+		<section name="SmartImportWizard.dialogBounds">
+			<item key="DIALOG_X_ORIGIN" value="328"/>
+			<item key="DIALOG_Y_ORIGIN" value="35"/>
+			<item key="DIALOG_WIDTH" value="1501"/>
+			<item key="DIALOG_HEIGHT" value="726"/>
+			<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-15|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>
+		</section>
+	</section>
+</section>
