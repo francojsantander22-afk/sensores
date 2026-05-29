@@ -33,6 +33,16 @@
 #define REG_ACC_RANGE       0x41
 #define REG_DATA_8          0x0C
 #define REG_TEMP_LSB        0x22
+
+typedef struct {
+	int16_t acc_x;
+	int16_t acc_y;
+	int16_t acc_z;
+	int16_t gyr_x;
+	int16_t gyr_y;
+	int16_t gyr_z;
+} BMI270_Data_t;
+
 //Direcciones SHT21
 #define SHT21_I2C_ADDR   (0x40 << 1) // Dirección I2C desplazada 1 bit
 #define CMD_MEASURE_T    0xF3        // Trigger T measurement (no hold master)
@@ -149,6 +159,20 @@ HAL_StatusTypeDef BMI270_LoadConfigFile(void) {
 	UART_Print("   -> Transmision completada.\r\n");
 	return HAL_OK;
 }
+void BMI270_Read_Motion_Struct(BMI270_Data_t *imu_data) {
+	uint8_t raw[14];
+
+	BMI270_ReadRegs(REG_DATA_8, raw, 14);
+
+	// Guardamos los datos dentro de la estructura usando la flecha (->)
+	imu_data->acc_x = (int16_t) ((raw[1] << 8) | raw[0]);
+	imu_data->acc_y = (int16_t) ((raw[3] << 8) | raw[2]);
+	imu_data->acc_z = (int16_t) ((raw[5] << 8) | raw[4]);
+
+	imu_data->gyr_x = (int16_t) ((raw[7] << 8) | raw[6]);
+	imu_data->gyr_y = (int16_t) ((raw[9] << 8) | raw[8]);
+	imu_data->gyr_z = (int16_t) ((raw[11] << 8) | raw[10]);
+}
 
 void UART_Print(const char *msg) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
@@ -159,6 +183,21 @@ float BMI270_ReadTemperature(void) {
 	BMI270_ReadRegs(REG_TEMP_LSB, raw, 2);
 	int16_t raw_temp = (int16_t) ((raw[1] << 8) | raw[0]);
 	return (raw_temp / 512.0f) + 23.0f;
+}
+void BMI270_Get_Data(int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz) {
+	uint8_t raw[14];
+
+	// Leemos los 14 bytes del sensor
+	BMI270_ReadRegs(REG_DATA_8, raw, 14);
+
+	// Escribimos directamente en las variables usando los punteros (*)
+	*ax = (int16_t) ((raw[1] << 8) | raw[0]);
+	*ay = (int16_t) ((raw[3] << 8) | raw[2]);
+	*az = (int16_t) ((raw[5] << 8) | raw[4]);
+
+	*gx = (int16_t) ((raw[7] << 8) | raw[6]);
+	*gy = (int16_t) ((raw[9] << 8) | raw[8]);
+	*gz = (int16_t) ((raw[11] << 8) | raw[10]);
 }
 
 void get_nmea_field(const char *nmea, uint8_t field_num, char *result) {
@@ -406,6 +445,7 @@ int main(void) {
 	/* USER CODE BEGIN WHILE */
 	uint32_t last_gps_time = HAL_GetTick();
 	uint32_t last_imu_time = HAL_GetTick();
+	BMI270_Data_t imu;
 	while (1) {
 
 		uint8_t trigger_telemetry = 0;
@@ -499,17 +539,7 @@ int main(void) {
 			}
 
 			// 2. IMU (siempre)
-			uint8_t raw[14];
-			BMI270_ReadRegs(REG_DATA_8, raw, 14);
-
-			int16_t acc_x = (int16_t) ((raw[1] << 8) | raw[0]);
-			int16_t acc_y = (int16_t) ((raw[3] << 8) | raw[2]);
-			int16_t acc_z = (int16_t) ((raw[5] << 8) | raw[4]);
-
-			// Extraemos también el giroscopio
-			int16_t gyr_x = (int16_t) ((raw[7] << 8) | raw[6]);
-			int16_t gyr_y = (int16_t) ((raw[9] << 8) | raw[8]);
-			int16_t gyr_z = (int16_t) ((raw[11] << 8) | raw[10]);
+			BMI270_Read_Motion_Struct(&imu);
 
 			float temp = BMI270_ReadTemperature();
 
@@ -518,13 +548,13 @@ int main(void) {
 
 			// Conversión a valores reales para el Print ASCII
 			// (Basado en rango de +-8g configurado en REG_ACC_RANGE = 0x02 y giroscopio por defecto de +-2000dps)
-			float ax_g = acc_x / 4096.0f;
-			float ay_g = acc_y / 4096.0f;
-			float az_g = acc_z / 4096.0f;
+			float ax_g = imu.acc_x / 4096.0f;
+			float ay_g = imu.acc_y / 4096.0f;
+			float az_g = imu.acc_z / 4096.0f;
 
-			float gx_dps = gyr_x / 16.4f;
-			float gy_dps = gyr_y / 16.4f;
-			float gz_dps = gyr_z / 16.4f;
+			float gx_dps = imu.gyr_x / 16.4f;
+			float gy_dps = imu.gyr_y / 16.4f;
+			float gz_dps = imu.gyr_z / 16.4f;
 
 			//SHT21 (SIEMPRE)
 			SHT21_Read(&temperature_sht21, &hum);
@@ -549,8 +579,8 @@ int main(void) {
 			HAL_Delay(100);
 
 			build_telemetry_payload(gps_has_fix, h, m, s, lat_int, lon_int,
-					alt_int, speed_scaled, acc_x, acc_y, acc_z, gyr_x, gyr_y,
-					gyr_z, temp_sht_bits, hum_bits, press_bits);
+					alt_int, speed_scaled, imu.acc_x, imu.acc_y, imu.acc_z, imu.gyr_x, imu.gyr_y,
+					imu.gyr_z, temp_sht_bits, hum_bits, press_bits);
 
 			// 3. Debug por UART
 			if (!menu_active) {
