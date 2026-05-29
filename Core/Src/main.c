@@ -197,27 +197,27 @@ void SHT21_Read(float *temperature, float *humidity) {
 }
 // Empaquetar 1 Byte (8 bits)
 void tlv_pack_8(uint8_t type, uint8_t val) {
-    lora_tx_buffer[lora_tx_len++] = type;
-    lora_tx_buffer[lora_tx_len++] = 1; // Longitud: 1 byte
-    lora_tx_buffer[lora_tx_len++] = val;
+	lora_tx_buffer[lora_tx_len++] = type;
+	lora_tx_buffer[lora_tx_len++] = 1; // Longitud: 1 byte
+	lora_tx_buffer[lora_tx_len++] = val;
 }
 
 // Empaquetar 2 Bytes
 void tlv_pack_16(uint8_t type, uint16_t val) {
-    lora_tx_buffer[lora_tx_len++] = type;
-    lora_tx_buffer[lora_tx_len++] = 2; // Longitud: 2 bytes
-    lora_tx_buffer[lora_tx_len++] = (val >> 8) & 0xFF; // MSB
-    lora_tx_buffer[lora_tx_len++] = val & 0xFF;        // LSB
+	lora_tx_buffer[lora_tx_len++] = type;
+	lora_tx_buffer[lora_tx_len++] = 2; // Longitud: 2 bytes
+	lora_tx_buffer[lora_tx_len++] = (val >> 8) & 0xFF; // MSB
+	lora_tx_buffer[lora_tx_len++] = val & 0xFF;        // LSB
 }
 
 // Empaquetar 4 Bytes
 void tlv_pack_32(uint8_t type, uint32_t val) {
-    lora_tx_buffer[lora_tx_len++] = type;
-    lora_tx_buffer[lora_tx_len++] = 4; // Longitud: 4 bytes
-    lora_tx_buffer[lora_tx_len++] = (val >> 24) & 0xFF;
-    lora_tx_buffer[lora_tx_len++] = (val >> 16) & 0xFF;
-    lora_tx_buffer[lora_tx_len++] = (val >> 8) & 0xFF;
-    lora_tx_buffer[lora_tx_len++] = val & 0xFF;
+	lora_tx_buffer[lora_tx_len++] = type;
+	lora_tx_buffer[lora_tx_len++] = 4; // Longitud: 4 bytes
+	lora_tx_buffer[lora_tx_len++] = (val >> 24) & 0xFF;
+	lora_tx_buffer[lora_tx_len++] = (val >> 16) & 0xFF;
+	lora_tx_buffer[lora_tx_len++] = (val >> 8) & 0xFF;
+	lora_tx_buffer[lora_tx_len++] = val & 0xFF;
 }
 
 void tlv_pack_time(uint8_t type, uint8_t h, uint8_t m, uint8_t s) {
@@ -262,6 +262,34 @@ int32_t nmea_to_int32(char *coord_str, char dir) {
 	if (dir == 'S' || dir == 'W')
 		decimal_deg *= -1.0f;
 	return (int32_t) (decimal_deg * 100000.0f);
+}
+// Función maestra para armar el paquete LoRa
+uint8_t build_telemetry_payload(uint8_t gps_has_fix, uint8_t h, uint8_t m,
+		uint8_t s, int32_t lat, int32_t lon, int16_t alt, uint16_t speed,
+		int16_t acc_x, int16_t acc_y, int16_t acc_z, int16_t gyr_x,
+		int16_t gyr_y, int16_t gyr_z, int16_t temp_sht, uint16_t hum_sht,
+		uint32_t pressure) {
+	lora_tx_len = 0; // Reiniciar el puntero del búfer global
+
+	// 1. Datos GPS (Solo se agregan si hay satélites válidos)
+	if (gps_has_fix) {
+		tlv_pack_time(0x01, h, m, s);
+		tlv_pack_gps_coords(0x02, lat, lon);
+		tlv_pack_16(0x03, alt);
+		tlv_pack_16(0x04, speed);
+	}
+
+	// 2. Datos IMU (Siempre se empaquetan)
+	tlv_pack_xyz(0x05, acc_x, acc_y, acc_z);
+	tlv_pack_xyz(0x06, gyr_x, gyr_y, gyr_z);
+	//tlv_pack_16(0x0A, temp_imu); // Type 0x0A para Temperatura IMU
+
+	// 3. Datos Atmosféricos (Siempre se empaquetan)
+	tlv_pack_16(0x07, temp_sht);
+	tlv_pack_16(0x08, hum_sht);
+	tlv_pack_32(0x09, pressure);
+
+	return lora_tx_len; // Devuelve el tamaño final del paquete
 }
 
 /* USER CODE END 0 */
@@ -336,7 +364,6 @@ int main(void) {
 	uint32_t raw_pressure;
 	float temperature_bmp280, pressure;
 	float temperature_sht21, hum;
-	char uart_buf[100];
 	float gps_speed_kmh = 0.0f;
 	// Iniciar interrupciones de recepción para ambos UARTs
 	HAL_UART_Receive_IT(&huart1, &rx_data, 1);
@@ -435,6 +462,11 @@ int main(void) {
 			char time_str[15] = { 0 }, lat_str[15] = { 0 }, ns[2] = { 0 };
 			char lon_str[15] = { 0 }, ew[2] = { 0 }, alt_str[10] = { 0 },
 					fix_str[2] = { 0 };
+			uint8_t gps_has_fix = 0; // Nuestra bandera lógica
+			uint8_t h = 0, m = 0, s = 0;
+			uint16_t speed_scaled = 0;
+			int32_t lat_int = 0, lon_int = 0;
+			int16_t alt_int = 0;
 
 			// 1. GPS (si tiene fix)
 			if (gps_valid) {
@@ -447,20 +479,22 @@ int main(void) {
 				get_nmea_field(line_buffer, 9, alt_str);
 
 				if (fix_str[0] >= '1') {
+					gps_has_fix = 1;
+
 					int utc_h = (time_str[0] - '0') * 10 + (time_str[1] - '0');
-					int art_h = (utc_h - 3 < 0) ? utc_h - 3 + 24 : utc_h - 3;
-					uint8_t m = (time_str[2] - '0') * 10 + (time_str[3] - '0');
-					uint8_t s = (time_str[4] - '0') * 10 + (time_str[5] - '0');
-					tlv_pack_time(0x01, (uint8_t) art_h, m, s); //TLV HORA
+					h = (utc_h - 3 < 0) ? utc_h - 3 + 24 : utc_h - 3;
+					m = (time_str[2] - '0') * 10 + (time_str[3] - '0');
+					s = (time_str[4] - '0') * 10 + (time_str[5] - '0');
+					//tlv_pack_time(0x01, (uint8_t) art_h, m, s); //TLV HORA
 
-					int32_t lat_int = nmea_to_int32(lat_str, ns[0]);
-					int32_t lon_int = nmea_to_int32(lon_str, ew[0]);
-					tlv_pack_gps_coords(0x02, lat_int, lon_int); //TLV LATITUD Y LONGITUD
+					lat_int = nmea_to_int32(lat_str, ns[0]);
+					lon_int = nmea_to_int32(lon_str, ew[0]);
+					//tlv_pack_gps_coords(0x02, lat_int, lon_int); //TLV LATITUD Y LONGITUD
 
-					int16_t alt_int = (int16_t) atof(alt_str);
-					tlv_pack_16(0x03, alt_int); //TLV ALTITUD
+					alt_int = (int16_t) atof(alt_str);
+					//tlv_pack_16(0x03, alt_int); //TLV ALTITUD
 
-					tlv_pack_16(0x04, (uint16_t)(gps_speed_kmh * 100.0f));
+					//tlv_pack_16(0x04, (uint16_t) (gps_speed_kmh * 100.0f));
 				}
 			}
 
@@ -479,8 +513,8 @@ int main(void) {
 
 			float temp = BMI270_ReadTemperature();
 
-			tlv_pack_xyz(0x05, acc_x, acc_y, acc_z);//TLV acelerometro X,Y,Z
-			tlv_pack_xyz(0x06, gyr_x, gyr_y, gyr_z);//TLV giroscopio X,Y,Z
+			//tlv_pack_xyz(0x05, acc_x, acc_y, acc_z); //TLV acelerometro X,Y,Z
+			//tlv_pack_xyz(0x06, gyr_x, gyr_y, gyr_z); //TLV giroscopio X,Y,Z
 
 			// Conversión a valores reales para el Print ASCII
 			// (Basado en rango de +-8g configurado en REG_ACC_RANGE = 0x02 y giroscopio por defecto de +-2000dps)
@@ -494,24 +528,29 @@ int main(void) {
 
 			//SHT21 (SIEMPRE)
 			SHT21_Read(&temperature_sht21, &hum);
-			int16_t temp_sht_bits = (int16_t)(temperature_sht21 * 100.0f);
-			tlv_pack_16(0x07, temp_sht_bits); //TLV temperatura sth_21
-			uint16_t hum_bits = (uint16_t)(hum * 100.0f);
-			tlv_pack_16(0x08, hum_bits); //TLV humedad
+			int16_t temp_sht_bits = (int16_t) (temperature_sht21 * 100.0f);
+			//tlv_pack_16(0x07, temp_sht_bits); //TLV temperatura sth_21
+			uint16_t hum_bits = (uint16_t) (hum * 100.0f);
+			//tlv_pack_16(0x08, hum_bits); //TLV humedad
 
 			//BMP280 SIEMPRE
 
+			uint32_t press_bits = 0;
 			if (bmp280_read_temperature_pressure(&gs_handle,
 					&raw_temperature_bmp, &temperature_bmp280, &raw_pressure,
 					&pressure) == 0) {
-				uint32_t press_bits = (uint32_t)pressure;
-				tlv_pack_32(0x09, press_bits); //TLV Presion
+				press_bits = (uint32_t) pressure;
+				//tlv_pack_32(0x09, press_bits); //TLV Presion
 				//sprintf(uart_buf, "Temperatura: %.2f C, Presion: %.2f Pa\r\n",
-					//	temperature_bmp280, pressure);
+				//	temperature_bmp280, pressure);
 			} else {
 				UART_Print("Error al leer datos BMP280\r\n");
 			}
 			HAL_Delay(100);
+
+			build_telemetry_payload(gps_has_fix, h, m, s, lat_int, lon_int,
+					alt_int, speed_scaled, acc_x, acc_y, acc_z, gyr_x, gyr_y,
+					gyr_z, temp_sht_bits, hum_bits, press_bits);
 
 			// 3. Debug por UART
 			if (!menu_active) {
@@ -547,12 +586,12 @@ int main(void) {
 					// 2. Verificamos si hay conexión y tenemos fix satelital
 					else if (gps_valid && fix_str[0] >= '1') {
 						snprintf(ascii_msg, sizeof(ascii_msg),
-								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h\r\n"
+								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h\r\n, Hora: %.2d\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
 								lat_str, ns, lon_str, ew, alt_str,
-								gps_speed_kmh, ax_g, ay_g, az_g, gx_dps, gy_dps,
+								gps_speed_kmh, h, ax_g, ay_g, az_g, gx_dps, gy_dps,
 								gz_dps, temp, temperature_sht21, hum,
 								temperature_bmp280, pressure);
 					}
