@@ -60,8 +60,8 @@ all: main-build
 main-build: sensores_integrados.elf secondary-outputs
 
 # Tool invocations
-sensores_integrados.elf sensores_integrados.map: $(OBJS) $(USER_OBJS) C:\Users\franc\STM32CubeIDE\workspace_2.1.2\gps\STM32WL55JCIX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "sensores_integrados.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\franc\STM32CubeIDE\workspace_2.1.2\gps\STM32WL55JCIX_FLASH.ld" --specs=nosys.specs -Wl,-Map="sensores_integrados.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+sensores_integrados.elf sensores_integrados.map: $(OBJS) $(USER_OBJS) C:\Users\franc\Desktop\Sensores\sensores\STM32WL55JCIX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "sensores_integrados.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\franc\Desktop\Sensores\sensores\STM32WL55JCIX_FLASH.ld" --specs=nosys.specs -Wl,-Map="sensores_integrados.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

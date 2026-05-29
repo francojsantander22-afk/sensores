@@ -41,6 +41,7 @@ typedef struct {
 	int16_t gyr_x;
 	int16_t gyr_y;
 	int16_t gyr_z;
+	float temp_BMI270;
 } BMI270_Data_t;
 
 //Direcciones SHT21
@@ -159,7 +160,19 @@ HAL_StatusTypeDef BMI270_LoadConfigFile(void) {
 	UART_Print("   -> Transmision completada.\r\n");
 	return HAL_OK;
 }
-void BMI270_Read_Motion_Struct(BMI270_Data_t *imu_data) {
+
+void UART_Print(const char *msg) {
+	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
+}
+
+float BMI270_ReadTemperature(void) {
+	uint8_t raw[2];
+	BMI270_ReadRegs(REG_TEMP_LSB, raw, 2);
+	int16_t raw_temp = (int16_t) ((raw[1] << 8) | raw[0]);
+	return (raw_temp / 512.0f) + 23.0f;
+}
+
+void BMI270_Get_Data(BMI270_Data_t *imu_data) {
 	uint8_t raw[14];
 
 	BMI270_ReadRegs(REG_DATA_8, raw, 14);
@@ -172,32 +185,8 @@ void BMI270_Read_Motion_Struct(BMI270_Data_t *imu_data) {
 	imu_data->gyr_x = (int16_t) ((raw[7] << 8) | raw[6]);
 	imu_data->gyr_y = (int16_t) ((raw[9] << 8) | raw[8]);
 	imu_data->gyr_z = (int16_t) ((raw[11] << 8) | raw[10]);
-}
 
-void UART_Print(const char *msg) {
-	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-}
-
-float BMI270_ReadTemperature(void) {
-	uint8_t raw[2];
-	BMI270_ReadRegs(REG_TEMP_LSB, raw, 2);
-	int16_t raw_temp = (int16_t) ((raw[1] << 8) | raw[0]);
-	return (raw_temp / 512.0f) + 23.0f;
-}
-void BMI270_Get_Data(int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz) {
-	uint8_t raw[14];
-
-	// Leemos los 14 bytes del sensor
-	BMI270_ReadRegs(REG_DATA_8, raw, 14);
-
-	// Escribimos directamente en las variables usando los punteros (*)
-	*ax = (int16_t) ((raw[1] << 8) | raw[0]);
-	*ay = (int16_t) ((raw[3] << 8) | raw[2]);
-	*az = (int16_t) ((raw[5] << 8) | raw[4]);
-
-	*gx = (int16_t) ((raw[7] << 8) | raw[6]);
-	*gy = (int16_t) ((raw[9] << 8) | raw[8]);
-	*gz = (int16_t) ((raw[11] << 8) | raw[10]);
+	imu_data->temp_BMI270=BMI270_ReadTemperature();
 }
 
 void get_nmea_field(const char *nmea, uint8_t field_num, char *result) {
@@ -539,9 +528,9 @@ int main(void) {
 			}
 
 			// 2. IMU (siempre)
-			BMI270_Read_Motion_Struct(&imu);
+			BMI270_Get_Data(&imu);
 
-			float temp = BMI270_ReadTemperature();
+			//float temp = BMI270_ReadTemperature();
 
 			//tlv_pack_xyz(0x05, acc_x, acc_y, acc_z); //TLV acelerometro X,Y,Z
 			//tlv_pack_xyz(0x06, gyr_x, gyr_y, gyr_z); //TLV giroscopio X,Y,Z
@@ -609,7 +598,7 @@ int main(void) {
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
-								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, temp,
+								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
 								temperature_sht21, hum, temperature_bmp280,
 								pressure);
 					}
@@ -622,7 +611,7 @@ int main(void) {
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
 								lat_str, ns, lon_str, ew, alt_str,
 								gps_speed_kmh, h, ax_g, ay_g, az_g, gx_dps, gy_dps,
-								gz_dps, temp, temperature_sht21, hum,
+								gz_dps, imu.temp_BMI270, temperature_sht21, hum,
 								temperature_bmp280, pressure);
 					}
 					// 3. Hay conexión pero aún no hay fix
@@ -632,7 +621,7 @@ int main(void) {
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
-								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, temp,
+								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
 								temperature_sht21, hum, temperature_bmp280,
 								pressure);
 					}
