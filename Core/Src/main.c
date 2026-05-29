@@ -461,7 +461,6 @@ int main(void) {
 					tlv_pack_16(0x03, alt_int); //TLV ALTITUD
 
 					tlv_pack_16(0x04, (uint16_t)(gps_speed_kmh * 100.0f));
-					tlv_pack_16(0x04,gps_speed_kmh); //TLV VELOCIDAD
 				}
 			}
 
