@@ -6545,7 +6545,7 @@ int main(void) {
  80035ae:	f7fd fe17 	bl	80011e0 <__aeabi_f2iz>
  80035b2:	4603      	mov	r3, r0
  80035b4:	f8a7 326e 	strh.w	r3, [r7, #622]	@ 0x26e
-			tlv_pack_16(0x07, temp_sht_bits);
+			tlv_pack_16(0x07, temp_sht_bits); //TLV temperatura sth_21
  80035b8:	f8b7 326e 	ldrh.w	r3, [r7, #622]	@ 0x26e
  80035bc:	4619      	mov	r1, r3
  80035be:	2007      	movs	r0, #7
@@ -6560,7 +6560,7 @@ int main(void) {
  80035d4:	f7fd fe2a 	bl	800122c <__aeabi_f2uiz>
  80035d8:	4603      	mov	r3, r0
  80035da:	f8a7 326c 	strh.w	r3, [r7, #620]	@ 0x26c
-			tlv_pack_16(0x08, hum_bits);
+			tlv_pack_16(0x08, hum_bits); //TLV humedad
  80035de:	f8b7 326c 	ldrh.w	r3, [r7, #620]	@ 0x26c
  80035e2:	4619      	mov	r1, r3
  80035e4:	2008      	movs	r0, #8
@@ -6588,7 +6588,7 @@ int main(void) {
  8003610:	f7fd fe0c 	bl	800122c <__aeabi_f2uiz>
  8003614:	4603      	mov	r3, r0
  8003616:	f8c7 3268 	str.w	r3, [r7, #616]	@ 0x268
-				tlv_pack_32(0x09, press_bits);
+				tlv_pack_32(0x09, press_bits); //TLV Presion
  800361a:	f8d7 1268 	ldr.w	r1, [r7, #616]	@ 0x268
  800361e:	2009      	movs	r0, #9
  8003620:	f7ff fa34 	bl	8002a8c <tlv_pack_32>

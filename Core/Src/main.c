@@ -495,9 +495,9 @@ int main(void) {
 			//SHT21 (SIEMPRE)
 			SHT21_Read(&temperature_sht21, &hum);
 			int16_t temp_sht_bits = (int16_t)(temperature_sht21 * 100.0f);
-			tlv_pack_16(0x07, temp_sht_bits);
+			tlv_pack_16(0x07, temp_sht_bits); //TLV temperatura sth_21
 			uint16_t hum_bits = (uint16_t)(hum * 100.0f);
-			tlv_pack_16(0x08, hum_bits);
+			tlv_pack_16(0x08, hum_bits); //TLV humedad
 
 			//BMP280 SIEMPRE
 
@@ -505,7 +505,7 @@ int main(void) {
 					&raw_temperature_bmp, &temperature_bmp280, &raw_pressure,
 					&pressure) == 0) {
 				uint32_t press_bits = (uint32_t)pressure;
-				tlv_pack_32(0x09, press_bits);
+				tlv_pack_32(0x09, press_bits); //TLV Presion
 				//sprintf(uart_buf, "Temperatura: %.2f C, Presion: %.2f Pa\r\n",
 					//	temperature_bmp280, pressure);
 			} else {
