@@ -605,12 +605,12 @@ int main(void) {
 					// 2. Verificamos si hay conexión y tenemos fix satelital
 					else if (gps_valid && fix_str[0] >= '1') {
 						snprintf(ascii_msg, sizeof(ascii_msg),
-								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h\r\n, Hora: %.2d\r\n"
+								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h\r\n, Hora: %.2d:%.2d:%.2d\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
 								lat_str, ns, lon_str, ew, alt_str,
-								gps_speed_kmh, h, ax_g, ay_g, az_g, gx_dps, gy_dps,
+								gps_speed_kmh, h, m, s, ax_g, ay_g, az_g, gx_dps, gy_dps,
 								gz_dps, imu.temp_BMI270, temperature_sht21, hum,
 								temperature_bmp280, pressure);
 					}
