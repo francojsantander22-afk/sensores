@@ -1,0 +1,44 @@
+GUÍA RÁPIDA DE GIT: FLUJO DE TRABAJO CON RAMAS (BRANCHES)
+
+===============================================================================
+FASE 1: INICIALIZAR EL REPOSITORIO LOCAL Y SUBIR AL MAIN POR PRIMERA VEZ
+===============================================================================
+# Abrir la terminal en la carpeta del proyecto y ejecutar:
+git init                           # Inicializa un repositorio Git local
+git add .                          # Prepara todos los archivos para el commit
+git commit -m "Commit inicial"     # Guarda el estado inicial del código
+git branch -M main                 # Renombra la rama por defecto a 'main'
+git remote add origin <URL_REPO>   # Vincula tu repositorio local con el remoto (GitHub/GitLab)
+git push -u origin main            # Sube la rama 'main' a la nube y la vincula
+
+===============================================================================
+FASE 2: CREAR UNA NUEVA RAMA Y TRABAJAR EN ELLA (EXPERIMENTAR)
+===============================================================================
+git checkout -b nueva-rama         # Crea una nueva rama y se cambia a ella automáticamente
+# ... Hacer modificaciones en el código ...
+git status                         # Verifica qué archivos cambiaron y en qué rama estás
+git add .                          # Prepara los cambios realizados
+git commit -m "Mensaje del cambio" # Guarda el progreso localmente en esta rama
+git push -u origin nueva-rama      # Sube la rama a la nube por primera vez (crea el vínculo)
+git push                           # Sube los siguientes cambios (las veces sucesivas)
+
+===============================================================================
+FASE 3: UNIFICAR LOS CAMBIOS CON LA RAMA PRINCIPAL (MERGE)
+===============================================================================
+# Una vez que todo funciona perfectamente en la rama secundaria:
+git checkout main                  # Regresa a la rama principal (main o master)
+git merge nueva-rama               # Fusiona los cambios de 'nueva-rama' dentro de 'main'
+git push                           # Sube el código ya unificado de 'main' a la nube
+
+===============================================================================
+FASE 4: LIMPIEZA DE RAMAS (ELIMINAR LA RAMA QUE YA NO SE USA)
+===============================================================================
+git branch -d nueva-rama           # Elimina la rama localmente (seguro, solo si ya se unificó)
+git branch -D nueva-rama           # Fuerza la eliminación local (descarta el experimento si salió mal)
+git push origin --delete nueva-rama # (Opcional) Elimina la rama también de GitHub si la habías subido
+
+===============================================================================
+COMANDOS ÚTILES DE CONSULTA
+===============================================================================
+git branch                         # Lista todas las ramas locales (la que tiene * es la actual)
+git log --oneline                  # Muestra un historial resumido de los commits realizados
