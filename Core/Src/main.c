@@ -8,8 +8,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "driver_bmp280.h"
-#include "driver_bmp280_interface.h"
+#include "ms5611.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
@@ -44,15 +43,10 @@ typedef struct {
 	float temp_BMI270;
 } BMI270_Data_t;
 
-//Direcciones SHT21
-#define SHT21_I2C_ADDR   (0x40 << 1) // Dirección I2C desplazada 1 bit
+//Direcciones SHT20
+#define SHT20_I2C_ADDR   (0x40 << 1) // Dirección I2C desplazada 1 bit
 #define CMD_MEASURE_T    0xF3        // Trigger T measurement (no hold master)
 #define CMD_MEASURE_RH   0xF5        // Trigger RH measurement (no hold master)
-//Dirección BMP280BMP280 (SDO GND)
-#define BMP280_ADDRESS_0 	0x76
-#define BMP280_REG_CTRL_MEAS 0xF4
-#define BMP280_REG_CONFIG    0xF5
-#define BMP280_REG_DATA      0xF7
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -109,7 +103,7 @@ void UART_Print(const char *msg);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-bmp280_handle_t gs_handle;
+MS5611_t ms5611;
 
 void BMI270_WriteReg(uint8_t reg, uint8_t val) {
 	char dbg[70];
@@ -186,7 +180,7 @@ void BMI270_Get_Data(BMI270_Data_t *imu_data) {
 	imu_data->gyr_y = (int16_t) ((raw[9] << 8) | raw[8]);
 	imu_data->gyr_z = (int16_t) ((raw[11] << 8) | raw[10]);
 
-	imu_data->temp_BMI270=BMI270_ReadTemperature();
+	imu_data->temp_BMI270 = BMI270_ReadTemperature();
 }
 
 void get_nmea_field(const char *nmea, uint8_t field_num, char *result) {
@@ -203,23 +197,23 @@ void get_nmea_field(const char *nmea, uint8_t field_num, char *result) {
 	result[j] = '\0';
 }
 
-void SHT21_Read(float *temperature, float *humidity) {
+void SHT20_Read(float *temperature, float *humidity) {
 	uint8_t cmd;
 	uint8_t data[3];
 	uint16_t raw_val;
 	// 1. Leer Temperatura
 	cmd = CMD_MEASURE_T;
-	HAL_I2C_Master_Transmit(&hi2c3, SHT21_I2C_ADDR, &cmd, 1, HAL_MAX_DELAY); // Enviamos el comando de medición de temperatura
+	HAL_I2C_Master_Transmit(&hi2c3, SHT20_I2C_ADDR, &cmd, 1, HAL_MAX_DELAY); // Enviamos el comando de medición de temperatura
 	HAL_Delay(85); // Esperamos el tiempo máximo de conversión para 14 bits (85 ms)
-	HAL_I2C_Master_Receive(&hi2c3, SHT21_I2C_ADDR, data, 3, HAL_MAX_DELAY); // Leemos 3 bytes: MSB, LSB y CRC
+	HAL_I2C_Master_Receive(&hi2c3, SHT20_I2C_ADDR, data, 3, HAL_MAX_DELAY); // Leemos 3 bytes: MSB, LSB y CRC
 	// Unimos los bytes y ponemos a '0' los últimos 2 bits de estado (0xFC = 11111100 en binario)
 	raw_val = (data[0] << 8) | (data[1] & 0xFC);
 	*temperature = -46.85 + 175.72 * ((float) raw_val / 65536.0); // Aplicamos la fórmula del datasheet
 	// 2. Leer Humedad Relativa
 	cmd = CMD_MEASURE_RH;
-	HAL_I2C_Master_Transmit(&hi2c3, SHT21_I2C_ADDR, &cmd, 1, HAL_MAX_DELAY); // Enviamos el comando de medición de humedad
+	HAL_I2C_Master_Transmit(&hi2c3, SHT20_I2C_ADDR, &cmd, 1, HAL_MAX_DELAY); // Enviamos el comando de medición de humedad
 	HAL_Delay(29); // Esperamos el tiempo máximo de conversión para 12 bits (29 ms)
-	HAL_I2C_Master_Receive(&hi2c3, SHT21_I2C_ADDR, data, 3, HAL_MAX_DELAY); // Leemos 3 bytes: MSB, LSB y CRC
+	HAL_I2C_Master_Receive(&hi2c3, SHT20_I2C_ADDR, data, 3, HAL_MAX_DELAY); // Leemos 3 bytes: MSB, LSB y CRC
 	raw_val = (data[0] << 8) | (data[1] & 0xFC); // Unimos los bytes y ponemos a '0' los últimos 2 bits de estado
 	*humidity = -6.0 + 125.0 * ((float) raw_val / 65536.0);	// Aplicamos la fórmula del datasheet
 }
@@ -352,46 +346,36 @@ int main(void) {
 	MX_USART2_UART_Init();
 	MX_I2C3_Init();
 	HAL_Delay(3000);
-	UART_Print("Inicializando sistema de telemetria...\r\n");
-	//BMP280
-	// 1. Enlazar las funciones de la interfaz
-	DRIVER_BMP280_LINK_INIT(&gs_handle, bmp280_handle_t);
-
-	// Enlaces I2C (Los que ya arreglamos)
-	DRIVER_BMP280_LINK_IIC_INIT(&gs_handle, bmp280_interface_iic_init);
-	DRIVER_BMP280_LINK_IIC_DEINIT(&gs_handle, bmp280_interface_iic_deinit);
-	DRIVER_BMP280_LINK_IIC_READ(&gs_handle, bmp280_interface_iic_read);
-	DRIVER_BMP280_LINK_IIC_WRITE(&gs_handle, bmp280_interface_iic_write);
-
-	// NUEVOS: Enlaces SPI (Ficticios para pasar el control de seguridad)
-	DRIVER_BMP280_LINK_SPI_INIT(&gs_handle, bmp280_interface_spi_init);
-	DRIVER_BMP280_LINK_SPI_DEINIT(&gs_handle, bmp280_interface_spi_deinit);
-	DRIVER_BMP280_LINK_SPI_READ(&gs_handle, bmp280_interface_spi_read);
-	DRIVER_BMP280_LINK_SPI_WRITE(&gs_handle, bmp280_interface_spi_write);
-
-	// Enlaces misceláneos
-	DRIVER_BMP280_LINK_DELAY_MS(&gs_handle, bmp280_interface_delay_ms);
-	DRIVER_BMP280_LINK_DEBUG_PRINT(&gs_handle, bmp280_interface_debug_print);
-
-	// 2. Configurar el protocolo e inicializar
-	bmp280_set_interface(&gs_handle, BMP280_INTERFACE_IIC);
-	bmp280_set_addr_pin(&gs_handle, BMP280_ADDRESS_0); // O BMP280_ADDR_GND dependiendo de tu pin SDO
-
-	if (bmp280_init(&gs_handle) != 0) {
-		UART_Print("Error al inicializar sensor BMP280\r\n");
+	UART_Print("Escaneando I2C3...\r\n");
+	for (uint8_t addr = 1; addr < 128; addr++)
+	{
+	    if (HAL_I2C_IsDeviceReady(&hi2c3, addr << 1, 1, 10) == HAL_OK)
+	    {
+	        char found[30];
+	        snprintf(found, sizeof(found), "  Dispositivo en 0x%02X\r\n", addr);
+	        UART_Print(found);
+	    }
 	}
+	UART_Print("Scan completo.\r\n");
+	UART_Print("Inicializando sistema de telemetria...\r\n");
 
-	// 3. Configuraciones básicas (recomendadas para clima/estándar)
-	bmp280_set_temperature_oversampling(&gs_handle, BMP280_OVERSAMPLING_x1);
-	bmp280_set_pressure_oversampling(&gs_handle, BMP280_OVERSAMPLING_x4);
-	bmp280_set_standby_time(&gs_handle, BMP280_STANDBY_TIME_500_MS);
-	bmp280_set_mode(&gs_handle, BMP280_MODE_NORMAL); // Arrancar mediciones continuas
+	if (MS5611_Init(&ms5611, &hi2c3) != HAL_OK) {
+		UART_Print("Error al inicializar MS5611\r\n");
+	} else {
+		char dbg[60];
+		snprintf(dbg, sizeof(dbg), "MS5611 OK. C1=%u C2=%u C3=%u\r\n",
+				ms5611.C[1], ms5611.C[2], ms5611.C[3]);
+		UART_Print(dbg);
+	}
+	char dbg[80];
+	snprintf(dbg, sizeof(dbg),
+	    "C1=%u C2=%u C3=%u C4=%u C5=%u C6=%u\r\n",
+	    ms5611.C[1], ms5611.C[2], ms5611.C[3],
+	    ms5611.C[4], ms5611.C[5], ms5611.C[6]);
+	UART_Print(dbg);
 
 	/* USER CODE BEGIN 2 */
-	uint32_t raw_temperature_bmp;
-	uint32_t raw_pressure;
-	float temperature_bmp280, pressure;
-	float temperature_sht21, hum;
+	float temperature_sht20, hum;
 	float gps_speed_kmh = 0.0f;
 	// Iniciar interrupciones de recepción para ambos UARTs
 	HAL_UART_Receive_IT(&huart1, &rx_data, 1);
@@ -545,31 +529,30 @@ int main(void) {
 			float gy_dps = imu.gyr_y / 16.4f;
 			float gz_dps = imu.gyr_z / 16.4f;
 
-			//SHT21 (SIEMPRE)
-			SHT21_Read(&temperature_sht21, &hum);
-			int16_t temp_sht_bits = (int16_t) (temperature_sht21 * 100.0f);
+			//SHT20 (SIEMPRE)
+			SHT20_Read(&temperature_sht20, &hum);
+			int16_t temp_sht_bits = (int16_t) (temperature_sht20 * 100.0f);
 			//tlv_pack_16(0x07, temp_sht_bits); //TLV temperatura sth_21
 			uint16_t hum_bits = (uint16_t) (hum * 100.0f);
 			//tlv_pack_16(0x08, hum_bits); //TLV humedad
 
-			//BMP280 SIEMPRE
-
+			//MS5611
 			uint32_t press_bits = 0;
-			if (bmp280_read_temperature_pressure(&gs_handle,
-					&raw_temperature_bmp, &temperature_bmp280, &raw_pressure,
-					&pressure) == 0) {
-				press_bits = (uint32_t) pressure;
-				//tlv_pack_32(0x09, press_bits); //TLV Presion
-				//sprintf(uart_buf, "Temperatura: %.2f C, Presion: %.2f Pa\r\n",
-				//	temperature_bmp280, pressure);
+			float temperature_ms5611 = 0.0f;
+			float pressure_ms5611 = 0.0f;
+
+			if (MS5611_Read(&ms5611, &hi2c3) == HAL_OK) {
+				temperature_ms5611 = ms5611.TEMP / 100.0f; /* °C  */
+				pressure_ms5611 = ms5611.P / 100.0f; /* mbar */
+				press_bits = (uint32_t) ms5611.P; /* centésimas de mbar */
 			} else {
-				UART_Print("Error al leer datos BMP280\r\n");
+				UART_Print("Error al leer MS5611\r\n");
 			}
-			HAL_Delay(100);
 
 			build_telemetry_payload(gps_has_fix, h, m, s, lat_int, lon_int,
-					alt_int, speed_scaled, imu.acc_x, imu.acc_y, imu.acc_z, imu.gyr_x, imu.gyr_y,
-					imu.gyr_z, temp_sht_bits, hum_bits, press_bits);
+					alt_int, speed_scaled, imu.acc_x, imu.acc_y, imu.acc_z,
+					imu.gyr_x, imu.gyr_y, imu.gyr_z, temp_sht_bits, hum_bits,
+					press_bits);
 
 			// 3. Debug por UART
 			if (!menu_active) {
@@ -596,34 +579,35 @@ int main(void) {
 						snprintf(ascii_msg, sizeof(ascii_msg),
 								"\r\n[GPS] Tx desconectado\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
-										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
+										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
-								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
-								temperature_sht21, hum, temperature_bmp280,
-								pressure);
+								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps,
+								imu.temp_BMI270, temperature_sht20, hum,
+								temperature_ms5611, pressure_ms5611);
 					}
 					// 2. Verificamos si hay conexión y tenemos fix satelital
 					else if (gps_valid && fix_str[0] >= '1') {
 						snprintf(ascii_msg, sizeof(ascii_msg),
-								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h\r\n, Hora: %.2d:%.2d:%.2d\r\n"
+								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h, Hora: %.2d:%.2d:%.2d\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
-										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
+										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
 								lat_str, ns, lon_str, ew, alt_str,
-								gps_speed_kmh, h, m, s, ax_g, ay_g, az_g, gx_dps, gy_dps,
-								gz_dps, imu.temp_BMI270, temperature_sht21, hum,
-								temperature_bmp280, pressure);
+								gps_speed_kmh, h, m, s, ax_g, ay_g, az_g,
+								gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
+								temperature_sht20, hum, temperature_ms5611,
+								pressure_ms5611);
 					}
 					// 3. Hay conexión pero aún no hay fix
 					else {
 						snprintf(ascii_msg, sizeof(ascii_msg),
 								"\r\n[GPS] Buscando satelites...\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
-										"[SHT21] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
+										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
 										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
-								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
-								temperature_sht21, hum, temperature_bmp280,
-								pressure);
+								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps,
+								imu.temp_BMI270, temperature_sht20, hum,
+								temperature_ms5611, pressure_ms5611);
 					}
 
 					UART_Print(ascii_msg);
