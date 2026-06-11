@@ -4,7 +4,19 @@
  * @file           : main.c
  * @brief          : Main program body
  ******************************************************************************
- */
+
+/* --- Mapa TLV ---
+ * 0x01  TIME        3B  hh mm ss
+ * 0x02  GPS_COORD   8B  lat(4) lon(4) ×100000
+ * 0x03  GPS_ALT     2B  metros (int16)
+ * 0x04  GPS_SPEED   2B  km/h ×100 (uint16)
+ * 0x05  ACCEL       6B  x y z (int16 cada uno)
+ * 0x06  GYRO        6B  x y z (int16 cada uno)
+ * 0x07  TEMP_SHT    2B  °C ×100 (int16)
+ * 0x08  HUM_SHT     2B  % ×100 (uint16)
+ * 0x09  PRESSURE    4B  mbar ×100 (uint32)
+ * 0x0A  BARO_ALT    2B  metros ISA (int16)
+ *
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -506,7 +518,7 @@ int main(void) {
 
 					alt_int = (int16_t) atof(alt_str);
 					//tlv_pack_16(0x03, alt_int); //TLV ALTITUD
-
+					speed_scaled = (uint16_t) (gps_speed_kmh * 100.0f);
 					//tlv_pack_16(0x04, (uint16_t) (gps_speed_kmh * 100.0f));
 				}
 			}
@@ -580,7 +592,7 @@ int main(void) {
 								"\r\n[GPS] Tx desconectado\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
+										"[MS5611] Temperatura: %.2f C | Presión: %.2f\r\n",
 								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps,
 								imu.temp_BMI270, temperature_sht20, hum,
 								temperature_ms5611, pressure_ms5611);
@@ -591,7 +603,7 @@ int main(void) {
 								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h, Hora: %.2d:%.2d:%.2d\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
+										"[MS5611] Temperatura: %.2f C | Presión: %.2f\r\n",
 								lat_str, ns, lon_str, ew, alt_str,
 								gps_speed_kmh, h, m, s, ax_g, ay_g, az_g,
 								gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
@@ -604,7 +616,7 @@ int main(void) {
 								"\r\n[GPS] Buscando satelites...\r\n"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[BMP280] Temperatura: %.2f C | Presión: %.2f\r\n",
+										"[MS5611] Temperatura: %.2f C | Presión: %.2f\r\n",
 								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps,
 								imu.temp_BMI270, temperature_sht20, hum,
 								temperature_ms5611, pressure_ms5611);
