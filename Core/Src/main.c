@@ -5,7 +5,7 @@
  * @brief          : Main program body
  ******************************************************************************
 
-/* --- Mapa TLV ---
+ --- Mapa TLV ---
  * 0x01  TIME        3B  hh mm ss
  * 0x02  GPS_COORD   8B  lat(4) lon(4) ×100000
  * 0x03  GPS_ALT     2B  metros (int16)
@@ -17,7 +17,7 @@
  * 0x09  PRESSURE    4B  mbar ×100 (uint32)
  * 0x0A  BARO_ALT    2B  metros ISA (int16)
  *
-/* USER CODE END Header */
+ /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "ms5611.h"
@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <bmi270_config.h>
 #include <stdbool.h>
+#include "cmps2.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -114,8 +115,6 @@ void UART_Print(const char *msg);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-MS5611_t ms5611;
 
 void BMI270_WriteReg(uint8_t reg, uint8_t val) {
 	char dbg[70];
@@ -357,34 +356,20 @@ int main(void) {
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
 	MX_I2C3_Init();
+	CMPS2_Init(&hi2c3);
 	HAL_Delay(3000);
 	UART_Print("Escaneando I2C3...\r\n");
-	for (uint8_t addr = 1; addr < 128; addr++)
-	{
-	    if (HAL_I2C_IsDeviceReady(&hi2c3, addr << 1, 1, 10) == HAL_OK)
-	    {
-	        char found[30];
-	        snprintf(found, sizeof(found), "  Dispositivo en 0x%02X\r\n", addr);
-	        UART_Print(found);
-	    }
+	for (uint8_t addr = 1; addr < 128; addr++) {
+		if (HAL_I2C_IsDeviceReady(&hi2c3, addr << 1, 1, 10) == HAL_OK) {
+			char found[30];
+			snprintf(found, sizeof(found), "  Dispositivo en 0x%02X\r\n", addr);
+			UART_Print(found);
+		}
 	}
 	UART_Print("Scan completo.\r\n");
 	UART_Print("Inicializando sistema de telemetria...\r\n");
 
-	if (MS5611_Init(&ms5611, &hi2c3) != HAL_OK) {
-		UART_Print("Error al inicializar MS5611\r\n");
-	} else {
-		char dbg[60];
-		snprintf(dbg, sizeof(dbg), "MS5611 OK. C1=%u C2=%u C3=%u\r\n",
-				ms5611.C[1], ms5611.C[2], ms5611.C[3]);
-		UART_Print(dbg);
-	}
-	char dbg[80];
-	snprintf(dbg, sizeof(dbg),
-	    "C1=%u C2=%u C3=%u C4=%u C5=%u C6=%u\r\n",
-	    ms5611.C[1], ms5611.C[2], ms5611.C[3],
-	    ms5611.C[4], ms5611.C[5], ms5611.C[6]);
-	UART_Print(dbg);
+	MS5611_Init(&hi2c3, 0);
 
 	/* USER CODE BEGIN 2 */
 	float temperature_sht20, hum;
@@ -549,17 +534,17 @@ int main(void) {
 			//tlv_pack_16(0x08, hum_bits); //TLV humedad
 
 			//MS5611
-			uint32_t press_bits = 0;
 			float temperature_ms5611 = 0.0f;
-			float pressure_ms5611 = 0.0f;
+			float pressure_pa = 0.0f;
+			float pressure_ms5611;
+			uint32_t press_bits;
 
-			if (MS5611_Read(&ms5611, &hi2c3) == HAL_OK) {
-				temperature_ms5611 = ms5611.TEMP / 100.0f; /* °C  */
-				pressure_ms5611 = ms5611.P / 100.0f; /* mbar */
-				press_bits = (uint32_t) ms5611.P; /* centésimas de mbar */
-			} else {
-				UART_Print("Error al leer MS5611\r\n");
-			}
+			MS5611_Measure(&hi2c3, &temperature_ms5611, &pressure_pa);
+			pressure_ms5611 = pressure_pa / 100.0f;  // convertir a mbar
+			press_bits = (uint32_t) (pressure_ms5611 * 100.0f); // si tu TLV espera centésimas de mbar
+
+			float measured_angle = CMPS2_GetHeading();
+			const char *direccion_viento = CMPS2_DecodeHeading(measured_angle);
 
 			build_telemetry_payload(gps_has_fix, h, m, s, lat_int, lon_int,
 					alt_int, speed_scaled, imu.acc_x, imu.acc_y, imu.acc_z,
@@ -584,29 +569,34 @@ int main(void) {
 					UART_Print(debug_msg);
 				} else if (display_mode == 1) {
 					// MODO ASCII NORMAL (Formateado según imagen)
-					char ascii_msg[300];
+					// Aumentamos el tamaño del buffer para evitar desbordamientos
+					char ascii_msg[512];
 
 					// 1. Verificamos si pasaron más de 2 segundos sin datos (Desconectado)
 					if (HAL_GetTick() - last_gps_time > 2000) {
 						snprintf(ascii_msg, sizeof(ascii_msg),
 								"\r\n[GPS] Tx desconectado\r\n"
+										"[PMOD] Angulo: %.2f | Direccion: %s"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[MS5611] Temperatura: %.2f C | Presión: %.2f\r\n",
-								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps,
-								imu.temp_BMI270, temperature_sht20, hum,
-								temperature_ms5611, pressure_ms5611);
+										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n",
+								measured_angle, direccion_viento, ax_g, ay_g,
+								az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
+								temperature_sht20, hum, temperature_ms5611,
+								pressure_ms5611);
 					}
 					// 2. Verificamos si hay conexión y tenemos fix satelital
 					else if (gps_valid && fix_str[0] >= '1') {
 						snprintf(ascii_msg, sizeof(ascii_msg),
 								"\r\n[GPS] Lat: %s %s, Lon: %s %s, Alt: %s, Vel: %.2f km/h, Hora: %.2d:%.2d:%.2d\r\n"
+										"[PMOD] Angulo: %.2f | Direccion: %s"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[MS5611] Temperatura: %.2f C | Presión: %.2f\r\n",
+										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n",
 								lat_str, ns, lon_str, ew, alt_str,
-								gps_speed_kmh, h, m, s, ax_g, ay_g, az_g,
-								gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
+								gps_speed_kmh, h, m, s, measured_angle,
+								direccion_viento, ax_g, ay_g, az_g, gx_dps,
+								gy_dps, gz_dps, imu.temp_BMI270,
 								temperature_sht20, hum, temperature_ms5611,
 								pressure_ms5611);
 					}
@@ -614,12 +604,14 @@ int main(void) {
 					else {
 						snprintf(ascii_msg, sizeof(ascii_msg),
 								"\r\n[GPS] Buscando satelites...\r\n"
+										"[PMOD] Angulo: %.2f | Direccion: %s"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[MS5611] Temperatura: %.2f C | Presión: %.2f\r\n",
-								ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps,
-								imu.temp_BMI270, temperature_sht20, hum,
-								temperature_ms5611, pressure_ms5611);
+										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n",
+								measured_angle, direccion_viento, ax_g, ay_g,
+								az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
+								temperature_sht20, hum, temperature_ms5611,
+								pressure_ms5611);
 					}
 
 					UART_Print(ascii_msg);

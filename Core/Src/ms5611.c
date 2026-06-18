@@ -1,108 +1,119 @@
-/* ms5611.c */
+/*
+ * ms5611.c
+ * Driver for MS5611 pressure and temperature sensor (I2C, STM32 HAL)
+ * Author: Jakub Zakrzewski
+ * Date:   30.08.2025
+ */
+
+#include <main.h>
 #include "ms5611.h"
-#include "stm32wlxx_hal.h"
+#include <math.h>
 
-/* ── Enviar un comando de 1 byte ─────────────────────────────────────── */
-static HAL_StatusTypeDef MS5611_SendCmd(I2C_HandleTypeDef *hi2c, uint8_t cmd)
+extern I2C_HandleTypeDef hi2c3;
+/* Conversion delay for OSR=4096 (safe margin) */
+#define MS5611_CONV_DELAY_MS   12
+
+/* Calibration coefficients and constants */
+static float coeff[7];
+
+/* Send a single command byte to the sensor */
+static void MS5611_SendCommand(I2C_HandleTypeDef *hi2c, uint8_t cmd)
 {
-    return HAL_I2C_Master_Transmit(hi2c, MS5611_I2C_ADDR, &cmd, 1, 10);
+    HAL_I2C_Master_Transmit(hi2c, MS5611_I2C_ADDR_HAL, &cmd, 1, HAL_MAX_DELAY);
 }
 
-/* ── Leer N bytes después de haber enviado un comando ───────────────── */
-static HAL_StatusTypeDef MS5611_ReadBytes(I2C_HandleTypeDef *hi2c,
-                                          uint8_t *buf, uint8_t len)
-{
-    return HAL_I2C_Master_Receive(hi2c, MS5611_I2C_ADDR, buf, len, 10);
-}
-
-/* ── Leer resultado ADC (24 bits) ───────────────────────────────────── */
-static HAL_StatusTypeDef MS5611_ReadADC(I2C_HandleTypeDef *hi2c,
-                                         uint32_t *result)
+/* Read 24-bit ADC result */
+static uint32_t MS5611_ReadADC(I2C_HandleTypeDef *hi2c)
 {
     uint8_t buf[3];
-    HAL_StatusTypeDef st = MS5611_SendCmd(hi2c, MS5611_CMD_ADC_READ);
-    if (st != HAL_OK) return st;
-    st = MS5611_ReadBytes(hi2c, buf, 3);
-    if (st != HAL_OK) return st;
-    *result = ((uint32_t)buf[0] << 16) |
-              ((uint32_t)buf[1] <<  8) |
-               (uint32_t)buf[2];
-    return HAL_OK;
+    HAL_I2C_Mem_Read(hi2c, MS5611_I2C_ADDR_HAL, MS5611_CMD_ADC_READ,
+                     I2C_MEMADD_SIZE_8BIT, buf, 3, HAL_MAX_DELAY);
+    return ((uint32_t)buf[0] << 16) | ((uint32_t)buf[1] << 8) | buf[2];
 }
 
-/* ── Init: Reset + leer 6 coeficientes PROM ────────────────────────── */
-HAL_StatusTypeDef MS5611_Init(MS5611_t *dev, I2C_HandleTypeDef *hi2c)
+/* Read 16-bit PROM value at given index */
+static uint16_t MS5611_ReadPROM(I2C_HandleTypeDef *hi2c, uint8_t index)
 {
-    /* Reset */
-    HAL_StatusTypeDef st = MS5611_SendCmd(hi2c, MS5611_CMD_RESET);
-    if (st != HAL_OK) return st;
-    HAL_Delay(5);   /* datasheet: 2.8 ms mínimo */
+    uint8_t buf[2];
+    HAL_I2C_Mem_Read(hi2c, MS5611_I2C_ADDR_HAL,
+                     MS5611_CMD_READ_PROM + (index * 2),
+                     I2C_MEMADD_SIZE_8BIT, buf, 2, HAL_MAX_DELAY);
+    return (buf[0] << 8) | buf[1];
+}
 
-    /* Leer C1..C6 (cada uno en 2 bytes, direcciones 0xA2, 0xA4 .. 0xAC) */
-    for (uint8_t i = 1; i <= 6; i++)
-    {
-        uint8_t cmd = MS5611_CMD_PROM_BASE + (i - 1) * 2; /* 0xA2,A4,A6,A8,AA,AC */
-        uint8_t buf[2];
-        st = MS5611_SendCmd(hi2c, cmd);
-        if (st != HAL_OK) return st;
-        st = MS5611_ReadBytes(hi2c, buf, 2);
-        if (st != HAL_OK) return st;
-        dev->C[i] = ((uint16_t)buf[0] << 8) | buf[1];
+/* Initialize calculation constants */
+static void MS5611_SetupConstants(uint8_t mathMode)
+{
+    coeff[0] = 1;
+    coeff[1] = 32768L;          // SENSt1
+    coeff[2] = 65536L;          // OFFt1
+    coeff[3] = 3.90625E-3;      // TCS
+    coeff[4] = 7.8125E-3;       // TCO
+    coeff[5] = 256;             // Tref
+    coeff[6] = 1.1920928955E-7; // TEMPSENS
+
+    if (mathMode == 1) {        // Application note mode
+        coeff[1] = 65536L;
+        coeff[2] = 131072L;
+        coeff[3] = 7.8125E-3;
+        coeff[4] = 1.5625E-2;
     }
-    return HAL_OK;
 }
 
-/* ── Read: medir D1 + D2 y calcular TEMP y P compensados ───────────── */
-HAL_StatusTypeDef MS5611_Read(MS5611_t *dev, I2C_HandleTypeDef *hi2c)
+void MS5611_Init(I2C_HandleTypeDef *hi2c, uint8_t mathMode)
 {
-    uint32_t D1, D2;
+    /* Reset the sensor */
+    MS5611_SendCommand(hi2c, MS5611_CMD_RESET);
+    HAL_Delay(3);
 
-    /* 1. Convertir presión (D1) */
-    MS5611_SendCmd(hi2c, MS5611_CMD_CONV_D1_4096);
-    HAL_Delay(10);   /* OSR=4096: máximo 9.04 ms */
-    if (MS5611_ReadADC(hi2c, &D1) != HAL_OK) return HAL_ERROR;
+    /* Load constants */
+    MS5611_SetupConstants(mathMode);
 
-    /* 2. Convertir temperatura (D2) */
-    MS5611_SendCmd(hi2c, MS5611_CMD_CONV_D2_4096);
-    HAL_Delay(10);
-    if (MS5611_ReadADC(hi2c, &D2) != HAL_OK) return HAL_ERROR;
+    /* Read factory calibration coefficients */
+    for (uint8_t reg = 0; reg < 7; reg++) {
+        uint16_t promValue = MS5611_ReadPROM(hi2c, reg);
+        coeff[reg] *= promValue;
+    }
+}
 
-    /* 3. Cálculo temperatura — datasheet pág. 8 */
-    int32_t dT   = (int32_t)D2 - (int32_t)dev->C[5] * 256;
-    int32_t TEMP = 2000 + ((int64_t)dT * dev->C[6]) / 8388608;
+void MS5611_Measure(I2C_HandleTypeDef *hi2c, float *temperature, float *pressure)
+{
+    /* Start D1 (pressure) conversion */
+    MS5611_SendCommand(hi2c, MS5611_CMD_CONV_D1 | MS5611_OSR_4096);
+    HAL_Delay(MS5611_CONV_DELAY_MS);
+    uint32_t D1 = MS5611_ReadADC(hi2c);
 
-    /* 4. Compensación de offset y sensibilidad */
-    int64_t OFF  = (int64_t)dev->C[2] * 65536
-                 + ((int64_t)dev->C[4] * dT) / 128;
-    int64_t SENS = (int64_t)dev->C[1] * 32768
-                 + ((int64_t)dev->C[3] * dT) / 256;
+    /* Start D2 (temperature) conversion */
+    MS5611_SendCommand(hi2c, MS5611_CMD_CONV_D2 | MS5611_OSR_4096);
+    HAL_Delay(MS5611_CONV_DELAY_MS);
+    uint32_t D2 = MS5611_ReadADC(hi2c);
 
-    /* 5. Segunda compensación (T < 20°C) — importante para altitud */
-    int32_t T2    = 0;
-    int64_t OFF2  = 0;
-    int64_t SENS2 = 0;
+    /* Calculate temperature and pressure */
+    float dT   = D2 - coeff[5];
+    float TEMP = 2000 + dT * coeff[6];
 
-    if (TEMP < 2000)
-    {
-        T2    = ((int64_t)dT * dT) / 2147483648U;   /* dT² / 2^31 */
-        OFF2  = 5 * ((int64_t)(TEMP - 2000) * (TEMP - 2000)) / 2;
-        SENS2 = 5 * ((int64_t)(TEMP - 2000) * (TEMP - 2000)) / 4;
+    float OFF  = coeff[2] + dT * coeff[4];
+    float SENS = coeff[1] + dT * coeff[3];
 
-        if (TEMP < -1500)   /* T < −15°C: corrección adicional */
-        {
-            OFF2  += 7  * (int64_t)(TEMP + 1500) * (TEMP + 1500);
-            SENS2 += 11 * (int64_t)(TEMP + 1500) * (TEMP + 1500) / 2;
+    /* Second-order temperature compensation */
+    if (TEMP < 2000) {
+        float T2    = dT * dT * 4.6566128731E-10f;
+        float tempDiff = (TEMP - 2000) * (TEMP - 2000);
+        float OFF2  = 2.5f * tempDiff;
+        float SENS2 = 1.25f * tempDiff;
+        if (TEMP < -1500) {
+            tempDiff = (TEMP + 1500) * (TEMP + 1500);
+            OFF2  += 7 * tempDiff;
+            SENS2 += 5.5f * tempDiff;
         }
+        TEMP -= T2;
+        OFF  -= OFF2;
+        SENS -= SENS2;
     }
 
-    TEMP -= T2;
-    OFF  -= OFF2;
-    SENS -= SENS2;
+    float P = (D1 * SENS * 4.76837158205E-7f - OFF) * 3.051757813E-5f;
 
-    /* 6. Presión compensada */
-    int32_t P = ((int64_t)D1 * SENS / 2097152 - OFF) / 32768;
-
-    dev->TEMP = TEMP;   /* ej: 2007  → 20.07 °C  */
-    dev->P    = P;      /* ej: 100009 → 1000.09 mbar */
-    return HAL_OK;
+    if(temperature) *temperature = TEMP * 0.01f; /* °C */
+    if(pressure)    *pressure    = (float)P;     /* Pa */
 }
+

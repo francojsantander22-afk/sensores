@@ -1,4 +1,4 @@
-Core/Src/ms5611.o: ../Core/Src/ms5611.c ../Core/Inc/main.h \
+Core/Src/cmps2.o: ../Core/Src/cmps2.c ../Core/Inc/cmps2.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal.h \
  ../Core/Inc/stm32wlxx_hal_conf.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_dma.h \
@@ -33,9 +33,8 @@ Core/Src/ms5611.o: ../Core/Src/ms5611.c ../Core/Inc/main.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_exti.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_uart.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_uart_ex.h \
- ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_system.h \
- ../Core/Inc/ms5611.h ../Core/Inc/stm32wlxx_hal_conf.h
-../Core/Inc/main.h:
+ ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_system.h
+../Core/Inc/cmps2.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal.h:
 ../Core/Inc/stm32wlxx_hal_conf.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_dma.h:
@@ -71,5 +70,3 @@ Core/Src/ms5611.o: ../Core/Src/ms5611.c ../Core/Inc/main.h \
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_uart.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_uart_ex.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_system.h:
-../Core/Inc/ms5611.h:
-../Core/Inc/stm32wlxx_hal_conf.h:

@@ -1,4 +1,5 @@
 "./Core/Src/bmi270_config.o"
+"./Core/Src/cmps2.o"
 "./Core/Src/driver_bmp280.o"
 "./Core/Src/driver_bmp280_interface.o"
 "./Core/Src/main.o"
