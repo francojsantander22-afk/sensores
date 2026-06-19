@@ -55,7 +55,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern I2C_HandleTypeDef hi2c3;
+extern SPI_HandleTypeDef hspi1;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
@@ -201,6 +201,20 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles SPI1 Interrupt.
+  */
+void SPI1_IRQHandler(void)
+{
+  /* USER CODE BEGIN SPI1_IRQn 0 */
+
+  /* USER CODE END SPI1_IRQn 0 */
+  HAL_SPI_IRQHandler(&hspi1);
+  /* USER CODE BEGIN SPI1_IRQn 1 */
+
+  /* USER CODE END SPI1_IRQn 1 */
+}
+
+/**
   * @brief This function handles USART1 Interrupt.
   */
 void USART1_IRQHandler(void)
@@ -226,34 +240,6 @@ void USART2_IRQHandler(void)
   /* USER CODE BEGIN USART2_IRQn 1 */
 
   /* USER CODE END USART2_IRQn 1 */
-}
-
-/**
-  * @brief This function handles I2C3 Event Interrupt.
-  */
-void I2C3_EV_IRQHandler(void)
-{
-  /* USER CODE BEGIN I2C3_EV_IRQn 0 */
-
-  /* USER CODE END I2C3_EV_IRQn 0 */
-  HAL_I2C_EV_IRQHandler(&hi2c3);
-  /* USER CODE BEGIN I2C3_EV_IRQn 1 */
-
-  /* USER CODE END I2C3_EV_IRQn 1 */
-}
-
-/**
-  * @brief This function handles I2C3 Error Interrupt.
-  */
-void I2C3_ER_IRQHandler(void)
-{
-  /* USER CODE BEGIN I2C3_ER_IRQn 0 */
-
-  /* USER CODE END I2C3_ER_IRQn 0 */
-  HAL_I2C_ER_IRQHandler(&hi2c3);
-  /* USER CODE BEGIN I2C3_ER_IRQn 1 */
-
-  /* USER CODE END I2C3_ER_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

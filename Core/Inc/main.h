@@ -57,6 +57,10 @@ void MX_RTC_Init(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define DATA_READY_Pin GPIO_PIN_1
+#define DATA_READY_GPIO_Port GPIOA
+#define CS_Pin GPIO_PIN_4
+#define CS_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 #define RTC_N_PREDIV_S 10
