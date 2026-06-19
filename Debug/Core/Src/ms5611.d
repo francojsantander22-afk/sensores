@@ -15,6 +15,9 @@ Core/Src/ms5611.o: ../Core/Src/ms5611.c ../Core/Inc/main.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_dma.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_dmamux.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_dma_ex.h \
+ ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_adc.h \
+ ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_adc.h \
+ ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_adc_ex.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_cortex.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_exti.h \
  ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_flash.h \
@@ -52,6 +55,9 @@ Core/Src/ms5611.o: ../Core/Src/ms5611.c ../Core/Inc/main.h \
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_dma.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_dmamux.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_dma_ex.h:
+../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_adc.h:
+../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_ll_adc.h:
+../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_adc_ex.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_cortex.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_exti.h:
 ../Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_flash.h:

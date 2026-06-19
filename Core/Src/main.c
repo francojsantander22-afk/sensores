@@ -4,8 +4,8 @@
  * @file           : main.c
  * @brief          : Main program body
  ******************************************************************************
-
- --- Mapa TLV ---
+ *
+ * --- Mapa TLV ---
  * 0x01  TIME        3B  hh mm ss
  * 0x02  GPS_COORD   8B  lat(4) lon(4) ×100000
  * 0x03  GPS_ALT     2B  metros (int16)
@@ -16,11 +16,16 @@
  * 0x08  HUM_SHT     2B  % ×100 (uint16)
  * 0x09  PRESSURE    4B  mbar ×100 (uint32)
  * 0x0A  BARO_ALT    2B  metros ISA (int16)
+ * 0x0B  BAT_VOLT    2B  mV (uint16)
+ * 0x0C  BAT_SOC     1B  % (uint8)
+ * 0x0D  MAG_ANGLE   2B  grados ×100 (uint16)
  *
- /* USER CODE END Header */
+ */ /* <--- AQUI ESTA LA SOLUCION: Cierre del bloque */
+
+/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "ms5611.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
@@ -29,6 +34,7 @@
 #include <bmi270_config.h>
 #include <stdbool.h>
 #include "cmps2.h"
+#include "ms5611.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,6 +66,16 @@ typedef struct {
 #define SHT20_I2C_ADDR   (0x40 << 1) // Dirección I2C desplazada 1 bit
 #define CMD_MEASURE_T    0xF3        // Trigger T measurement (no hold master)
 #define CMD_MEASURE_RH   0xF5        // Trigger RH measurement (no hold master)
+
+#define VREF              3.3f
+#define ADC_BITS          4096
+#define R1                100000.0f
+#define R2                220000.0f
+#define NUM_MUESTRAS      10
+#define INTERVALO_MS      500
+#define LM35_MV_POR_C     10.0f
+#define TEMP_ON           25.0f
+#define TEMP_OFF          22.0f
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -73,13 +89,27 @@ typedef struct {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc;
+
 I2C_HandleTypeDef hi2c3;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint8_t rx_data;
 uint8_t rx_data_uart2; // Variable para capturar el input del menú
+
+typedef struct {
+	float voltaje;
+	uint8_t porcentaje;
+} PuntoSoC;
+
+static const PuntoSoC tablaSoC[] =
+		{ { 4.20f, 100 }, { 4.10f, 90 }, { 4.00f, 75 }, { 3.90f, 60 }, { 3.80f,
+				50 }, { 3.70f, 35 }, { 3.60f, 25 }, { 3.50f, 15 },
+				{ 3.40f, 10 }, { 3.20f, 5 }, { 3.00f, 0 }, };
+static const uint8_t PUNTOS_SOC = sizeof(tablaSoC) / sizeof(tablaSoC[0]);
 
 // --- ESTADOS DEL MENÚ ---
 volatile uint8_t display_mode = 2; // 1 = ASCII, 2 = TLV (Default)
@@ -109,8 +139,12 @@ static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C3_Init(void);
+static void MX_ADC_Init(void);
 /* USER CODE BEGIN PFP */
 void UART_Print(const char *msg);
+uint32_t leerCanalADC(uint32_t canal);
+float leerVoltajeBateria(void);
+uint8_t voltajeASoC(float voltaje);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -228,6 +262,48 @@ void SHT20_Read(float *temperature, float *humidity) {
 	raw_val = (data[0] << 8) | (data[1] & 0xFC); // Unimos los bytes y ponemos a '0' los últimos 2 bits de estado
 	*humidity = -6.0 + 125.0 * ((float) raw_val / 65536.0);	// Aplicamos la fórmula del datasheet
 }
+uint32_t leerCanalADC(uint32_t canal) {
+	ADC_ChannelConfTypeDef sConfig = { 0 };
+	sConfig.Channel = canal;
+	sConfig.Rank = ADC_REGULAR_RANK_1;
+	sConfig.SamplingTime = ADC_SAMPLINGTIME_COMMON_1;
+	HAL_ADC_ConfigChannel(&hadc, &sConfig);
+
+	HAL_ADC_Start(&hadc);
+	HAL_ADC_PollForConversion(&hadc, 100);
+	uint32_t valor = HAL_ADC_GetValue(&hadc);
+	HAL_ADC_Stop(&hadc);
+
+	return valor;
+}
+float leerVoltajeBateria(void) {
+	uint32_t suma = 0;
+	for (uint8_t i = 0; i < NUM_MUESTRAS; i++) {
+		suma += leerCanalADC(ADC_CHANNEL_5); /* PB1 = ADC_IN5 */
+		HAL_Delay(5);
+	}
+	float rawProm = (float) suma / NUM_MUESTRAS;
+	float vPin = (rawProm / ADC_BITS) * VREF;
+	return vPin * (R1 + R2) / R2;
+}
+uint8_t voltajeASoC(float voltaje) {
+	if (voltaje >= tablaSoC[0].voltaje)
+		return 100;
+	if (voltaje <= tablaSoC[PUNTOS_SOC - 1].voltaje)
+		return 0;
+
+	for (uint8_t i = 0; i < PUNTOS_SOC - 1; i++) {
+		if (voltaje <= tablaSoC[i].voltaje
+				&& voltaje >= tablaSoC[i + 1].voltaje) {
+			float rango_v = tablaSoC[i].voltaje - tablaSoC[i + 1].voltaje;
+			float rango_p = tablaSoC[i].porcentaje - tablaSoC[i + 1].porcentaje;
+			float fraccion = (voltaje - tablaSoC[i + 1].voltaje) / rango_v;
+			return (uint8_t) (tablaSoC[i + 1].porcentaje + fraccion * rango_p);
+		}
+	}
+	return 0;
+}
+
 // Empaquetar 1 Byte (8 bits)
 void tlv_pack_8(uint8_t type, uint8_t val) {
 	lora_tx_buffer[lora_tx_len++] = type;
@@ -301,7 +377,7 @@ uint8_t build_telemetry_payload(uint8_t gps_has_fix, uint8_t h, uint8_t m,
 		uint8_t s, int32_t lat, int32_t lon, int16_t alt, uint16_t speed,
 		int16_t acc_x, int16_t acc_y, int16_t acc_z, int16_t gyr_x,
 		int16_t gyr_y, int16_t gyr_z, int16_t temp_sht, uint16_t hum_sht,
-		uint32_t pressure) {
+		uint32_t pressure, uint16_t vbat_mv, uint8_t soc, uint16_t mag_angle) {
 	lora_tx_len = 0; // Reiniciar el puntero del búfer global
 
 	// 1. Datos GPS (Solo se agregan si hay satélites válidos)
@@ -322,6 +398,11 @@ uint8_t build_telemetry_payload(uint8_t gps_has_fix, uint8_t h, uint8_t m,
 	tlv_pack_16(0x08, hum_sht);
 	tlv_pack_32(0x09, pressure);
 
+	// 4. Batería y Magnetómetro (Nuevos datos)
+	tlv_pack_16(0x0B, vbat_mv);     // Voltaje en mV
+	tlv_pack_8(0x0C, soc);          // Porcentaje 0-100%
+	tlv_pack_16(0x0D, mag_angle);   // Ángulo escalado x100
+
 	return lora_tx_len; // Devuelve el tamaño final del paquete
 }
 
@@ -332,6 +413,7 @@ uint8_t build_telemetry_payload(uint8_t gps_has_fix, uint8_t h, uint8_t m,
  * @retval int
  */
 int main(void) {
+
 	/* USER CODE BEGIN 1 */
 
 	/* USER CODE END 1 */
@@ -356,8 +438,9 @@ int main(void) {
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
 	MX_I2C3_Init();
-	CMPS2_Init(&hi2c3);
+	MX_ADC_Init();
 	HAL_Delay(3000);
+	/* USER CODE BEGIN 2 */
 	UART_Print("Escaneando I2C3...\r\n");
 	for (uint8_t addr = 1; addr < 128; addr++) {
 		if (HAL_I2C_IsDeviceReady(&hi2c3, addr << 1, 1, 10) == HAL_OK) {
@@ -368,10 +451,8 @@ int main(void) {
 	}
 	UART_Print("Scan completo.\r\n");
 	UART_Print("Inicializando sistema de telemetria...\r\n");
-
+	CMPS2_Init(&hi2c3);
 	MS5611_Init(&hi2c3, 0);
-
-	/* USER CODE BEGIN 2 */
 	float temperature_sht20, hum;
 	float gps_speed_kmh = 0.0f;
 	// Iniciar interrupciones de recepción para ambos UARTs
@@ -545,11 +626,17 @@ int main(void) {
 
 			float measured_angle = CMPS2_GetHeading();
 			const char *direccion_viento = CMPS2_DecodeHeading(measured_angle);
+			uint16_t mag_angle_scaled = (uint16_t)(measured_angle * 100.0f);
+
+			//BATERIAS ADC
+			float voltaje = leerVoltajeBateria();
+			uint8_t soc = voltajeASoC(voltaje);
+			uint16_t vbat_mv = (uint16_t)(voltaje * 1000.0f);
 
 			build_telemetry_payload(gps_has_fix, h, m, s, lat_int, lon_int,
 					alt_int, speed_scaled, imu.acc_x, imu.acc_y, imu.acc_z,
 					imu.gyr_x, imu.gyr_y, imu.gyr_z, temp_sht_bits, hum_bits,
-					press_bits);
+					press_bits, vbat_mv, soc, mag_angle_scaled);
 
 			// 3. Debug por UART
 			if (!menu_active) {
@@ -579,11 +666,12 @@ int main(void) {
 										"[PMOD] Angulo: %.2f | Direccion: %s"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n",
+										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n"
+										"VBAT: %.3f V | SOC: %u%%\r\n",
 								measured_angle, direccion_viento, ax_g, ay_g,
 								az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
 								temperature_sht20, hum, temperature_ms5611,
-								pressure_ms5611);
+								pressure_ms5611, voltaje, soc);
 					}
 					// 2. Verificamos si hay conexión y tenemos fix satelital
 					else if (gps_valid && fix_str[0] >= '1') {
@@ -592,13 +680,13 @@ int main(void) {
 										"[PMOD] Angulo: %.2f | Direccion: %s"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n",
-								lat_str, ns, lon_str, ew, alt_str,
-								gps_speed_kmh, h, m, s, measured_angle,
-								direccion_viento, ax_g, ay_g, az_g, gx_dps,
-								gy_dps, gz_dps, imu.temp_BMI270,
+										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n"
+										"VBAT: %.3f V | SOC: %u%%\r\n", lat_str,
+								ns, lon_str, ew, alt_str, gps_speed_kmh, h, m,
+								s, measured_angle, direccion_viento, ax_g, ay_g,
+								az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
 								temperature_sht20, hum, temperature_ms5611,
-								pressure_ms5611);
+								pressure_ms5611, voltaje, soc);
 					}
 					// 3. Hay conexión pero aún no hay fix
 					else {
@@ -607,11 +695,12 @@ int main(void) {
 										"[PMOD] Angulo: %.2f | Direccion: %s"
 										"[IMU] A: %+.2fg %+.2fg %+.2fg | G: %+.1fdps %+.1fdps %+.1fdps | T: %.1fC\r\n"
 										"[SHT20] Temperatura: %.2f C | Humedad: %.2f %%\r\n"
-										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n",
+										"[MS5611] Temperatura: %.2f C | Presion: %.2f\r\n"
+										"VBAT: %.3f V | SOC: %u%%\r\n",
 								measured_angle, direccion_viento, ax_g, ay_g,
 								az_g, gx_dps, gy_dps, gz_dps, imu.temp_BMI270,
 								temperature_sht20, hum, temperature_ms5611,
-								pressure_ms5611);
+								pressure_ms5611, voltaje, soc);
 					}
 
 					UART_Print(ascii_msg);
@@ -661,6 +750,62 @@ void SystemClock_Config(void) {
 	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
 		Error_Handler();
 	}
+}
+
+/**
+ * @brief ADC Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_ADC_Init(void) {
+
+	/* USER CODE BEGIN ADC_Init 0 */
+
+	/* USER CODE END ADC_Init 0 */
+
+	ADC_ChannelConfTypeDef sConfig = { 0 };
+
+	/* USER CODE BEGIN ADC_Init 1 */
+
+	/* USER CODE END ADC_Init 1 */
+
+	/** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+	 */
+	hadc.Instance = ADC;
+	hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV1;
+	hadc.Init.Resolution = ADC_RESOLUTION_12B;
+	hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+	hadc.Init.ScanConvMode = ADC_SCAN_DISABLE;
+	hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+	hadc.Init.LowPowerAutoWait = DISABLE;
+	hadc.Init.LowPowerAutoPowerOff = DISABLE;
+	hadc.Init.ContinuousConvMode = DISABLE;
+	hadc.Init.NbrOfConversion = 1;
+	hadc.Init.DiscontinuousConvMode = DISABLE;
+	hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+	hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+	hadc.Init.DMAContinuousRequests = DISABLE;
+	hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+	hadc.Init.SamplingTimeCommon1 = ADC_SAMPLETIME_160CYCLES_5;
+	hadc.Init.SamplingTimeCommon2 = ADC_SAMPLETIME_160CYCLES_5;
+	hadc.Init.OversamplingMode = DISABLE;
+	hadc.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_HIGH;
+	if (HAL_ADC_Init(&hadc) != HAL_OK) {
+		Error_Handler();
+	}
+
+	/** Configure Regular Channel
+	 */
+	sConfig.Channel = ADC_CHANNEL_4;
+	sConfig.Rank = ADC_REGULAR_RANK_1;
+	sConfig.SamplingTime = ADC_SAMPLINGTIME_COMMON_1;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN ADC_Init 2 */
+
+	/* USER CODE END ADC_Init 2 */
+
 }
 
 /**
@@ -881,16 +1026,16 @@ void Error_Handler(void) {
 	/* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */
+	/**
+	  * @brief  Reports the name of the source file and the source line number
+	  *         where the assert_param error has occurred.
+	  * @param  file: pointer to the source file name
+	  * @param  line: assert_param error line source number
+	  * @retval None
+	  */
+	void assert_failed(uint8_t *file, uint32_t line)
+	{
+	  /* USER CODE BEGIN 6 */
+	  /* USER CODE END 6 */
+	}
+	#endif /* USE_FULL_ASSERT */
